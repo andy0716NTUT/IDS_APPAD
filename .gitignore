@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虛擬環境
+venv/
+env/
+ENV/
+.venv
+
+# 訓練好的模型
+*.pkl
+*.h5
+*.pt
+*.pth
+trained_model.pkl
+
+# 數據集
+data/
+*.csv
+*.zip
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日誌
+*.log
+logs/
+
+# 測試
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 作業系統
+.DS_Store
+Thumbs.db
+
+# 臨時文件
+*.tmp
+*.bak
