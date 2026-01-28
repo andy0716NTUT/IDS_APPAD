@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 from typing import List, Tuple
+import os
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -106,7 +107,7 @@ def main() -> None:
 		"train_ratio": args.train_ratio,
 		"val_ratio": args.val_ratio,
 		"seed": args.seed,
-		"input": str(input_path)
+		"input": os.path.relpath(input_path, start=Path(__file__).resolve().parents[2])
 	}
 
 	with (output_dir / "standard_params.json").open("w", encoding="utf-8") as f:

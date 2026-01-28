@@ -31,5 +31,5 @@
   "train_ratio": 0.7,
   "val_ratio": 0.15,
   "seed": 42,
-  "input": "E:\\coding\\classifier\\IDS_APPAD\\dataset\\synthetic_web_auth_logs.csv"
+  "input": "dataset\\synthetic_web_auth_logs.csv"
 }
