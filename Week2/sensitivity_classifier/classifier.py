@@ -1,4 +1,4 @@
-from rules import (
+from Week2.sensitivity_classifier.rules import (
     HIGH_RISK_RULES,
     THRESHOLDS,
     SUSPICIOUS_LOCATIONS,
