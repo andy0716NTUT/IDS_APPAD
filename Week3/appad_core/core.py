@@ -1,63 +1,41 @@
 import time
-import random
+
 from Week2.sensitivity_classifier.classifier import SensitivityClassifier
-
-
-class PlaintextDetector:
-    """
-    Fast anomaly detection (no encryption)
-    """
-    def detect(self, record: dict) -> float:
-        # 簡單模擬一個 anomaly score
-        return random.uniform(0, 0.4)
-
-
-class EncryptedDetector:
-    """
-    Privacy-preserving anomaly detection (mock version)
-    """
-    def detect(self, record: dict) -> float:
-        # 模擬同態加密計算延遲
-        time.sleep(0.2)  # 200 ms
-        return random.uniform(0.6, 1.0)
+from Week3.appad_core.lr_plain import LogisticRegressionPlain
 
 
 class APPADCore:
-    """
-    Adaptive Privacy-Preserving Anomaly Detection Core
-    """
-
     def __init__(self):
-        self.sensitivity_classifier = SensitivityClassifier()
-        self.plain_detector = PlaintextDetector()
-        self.encrypted_detector = EncryptedDetector()
+        self.classifier = SensitivityClassifier()
+        self.lr_plain = LogisticRegressionPlain()
 
-    def process(self, record: dict):
-        """
-        Main entry point of APPAD
-        """
-
-        # Step 1: Sensitivity classification
-        sensitivity_result = self.sensitivity_classifier.classify(record)
-        level = sensitivity_result["sensitivity_level"]
-
-        # Step 2: Adaptive routing
+    def process(self, record: dict) -> dict:
         start_time = time.time()
 
-        if level == "HIGH":
-            score = self.encrypted_detector.detect(record)
-            method = "encrypted"
+        # 1️⃣ 敏感性判斷
+        cls = self.classifier.classify(record)
+
+        encryption_required = cls["encryption_required"]
+
+        # 2️⃣ LR 明文推論（現在只做這條路）
+        anomaly_score = self.lr_plain.predict_proba(record)
+
+        # 3️⃣ 模擬延遲
+        if encryption_required:
+            detection_method = "encrypted (stub)"
+            time.sleep(0.2)
         else:
-            score = self.plain_detector.detect(record)
-            method = "plaintext"
+            detection_method = "plaintext"
+            time.sleep(0.02)
 
-        latency_ms = (time.time() - start_time) * 1000
+        latency_ms = round((time.time() - start_time) * 1000, 1)
 
-        # Step 3: Unified output
         return {
-            "sensitivity_level": level,
-            "is_sensitive": sensitivity_result["is_sensitive"],
-            "anomaly_score": round(score, 2),
-            "detection_method": method,
-            "latency_ms": round(latency_ms, 1)
+            "sensitivity_level": cls["sensitivity_level"],
+            "is_sensitive": cls["is_sensitive"],
+            "risk_score": cls["risk_score"],
+            "anomaly_score": anomaly_score,
+            "detection_method": detection_method,
+            "latency_ms": latency_ms,
+            "reasons": cls["reasons"]
         }
