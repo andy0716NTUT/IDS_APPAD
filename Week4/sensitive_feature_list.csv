@@ -1,0 +1,11 @@
+feature_name,source_columns,need_HE_flag,reason
+anomaly,Anomaly,0,in FORCE_NON_SENSITIVE_FEATURES (技術特徵，較難識別個人)
+behavioral_score,Behavioral Score,0,in FORCE_NON_SENSITIVE_FEATURES (技術特徵，較難識別個人)
+device_type,Device Type,0,in FORCE_NON_SENSITIVE_FEATURES (技術特徵，較難識別個人)
+failed_attempts,Failed Attempts,0,in FORCE_NON_SENSITIVE_FEATURES (技術特徵，較難識別個人)
+ip_address,IP Address,1,in FORCE_SENSITIVE_FEATURES (直接或強識別資訊)
+location,Location,1,in FORCE_SENSITIVE_FEATURES (直接或強識別資訊)
+login_status,Login Status,0,default non-sensitive (技術或統計性欄位)
+session_duration,Session Duration,0,in FORCE_NON_SENSITIVE_FEATURES (技術特徵，較難識別個人)
+timestamp,Timestamp,1,in FORCE_SENSITIVE_FEATURES (直接或強識別資訊)
+user_id,User ID,1,in FORCE_SENSITIVE_FEATURES (直接或強識別資訊)
