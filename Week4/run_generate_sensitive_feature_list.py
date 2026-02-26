@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from Week4.feature_sensitivity import FeatureSensitivityClassifier
+from feature_sensitivity import FeatureSensitivityClassifier
 
 
 # 與 Week2.sensitivity_classifier.run_dataset 中的欄位映射保持一致
