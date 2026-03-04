@@ -58,26 +58,6 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
   - `client_decision.py`：Client 端最終決策邏輯。
 - 輸出：異常/正常與保護策略相關的最終決策結果。
 
-## 快速執行
-- 產生敏感欄位清單
-  - `python -m classifier.scripts.run_generate_sensitive_feature_list`
-- LR 訓練
-  - `python -m logistic_regression_model.training.train_logistic_regression`
-- LR 推論
-  - `python -m logistic_regression_model.inference.run_logistic_regression_inference`
-- 混合保護 Demo
-  - `python -m adaptive_module.demo.run_mixed_protection_demo`
-
-## Week4 結果摘要（敏感特徵分類）
-- 分類統計：10 個特徵中，4 個需 HE 加密（40%），6 個可明文處理（60%）
-- 需加密欄位：`user_id`、`ip_address`、`location`、`timestamp`
-- 不需加密欄位：`anomaly`、`behavioral_score`、`device_type`、`failed_attempts`、`login_status`、`session_duration`
-- 規則設計：
-  - 強制敏感清單與強制非敏感清單
-  - 關鍵字規則（例如 `id/user/account`、`ip/device`、`location/address`、`time/timestamp`）
-- Pipeline 整合結果：`FeatureSensitivityClassifier.sensitive_indices(record)` 能正確驅動 `AdaptiveModule.protect()` 將敏感欄位進入加密流程
-- 隱私/效能平衡：關鍵識別資訊覆蓋率 100%，同時保留 60% 欄位明文處理以降低運算成本
-
 ## 專案檔案樹
 ```text
 IDS_APPAD/
