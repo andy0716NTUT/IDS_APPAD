@@ -107,7 +107,3 @@ IDS_APPAD/
 ├─ conftest.py
 └─ README.md
 ```
-
-## 備註
-- 原 `classifier/RESULTS_SUMMARY_week4.md` 內容已整併至本文件。
-
