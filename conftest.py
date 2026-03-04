@@ -1,9 +1,9 @@
 """
 Pytest configuration for making the project importable as:
-    import Week2, Week3, ...
+    import classifier, adaptive_module, ...
 
 By default, depending on how pytest is invoked, the project root may not be
-on sys.path, which breaks imports like `from Week3.appad_core.core import APPADCore`.
+on sys.path, which breaks imports like `from adaptive_module.core import APPADCore`.
 This file ensures that the repository root is always on sys.path.
 """
 

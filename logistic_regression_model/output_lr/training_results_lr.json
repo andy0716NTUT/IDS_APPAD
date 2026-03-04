@@ -1,0 +1,62 @@
+{
+  "config": {
+    "max_iter": 1,
+    "threshold": 0.5,
+    "use_class_weight": false,
+    "feature_cols": [
+      "User ID",
+      "Session Duration",
+      "Failed Attempts",
+      "Behavioral Score"
+    ],
+    "target_col": "Anomaly"
+  },
+  "train_metrics": {
+    "accuracy": 0.8209744249178454,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "confusion_matrix": [
+      [
+        5746,
+        0
+      ],
+      [
+        1253,
+        0
+      ]
+    ]
+  },
+  "val_metrics": {
+    "accuracy": 0.8133333333333334,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "confusion_matrix": [
+      [
+        1220,
+        0
+      ],
+      [
+        280,
+        0
+      ]
+    ]
+  },
+  "test_metrics": {
+    "accuracy": 0.8121252498334444,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "confusion_matrix": [
+      [
+        1219,
+        0
+      ],
+      [
+        282,
+        0
+      ]
+    ]
+  }
+}
