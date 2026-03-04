@@ -151,8 +151,13 @@ def summarize_structure_diff(
 
 
 def main() -> None:
-    # 使用真實 Paillier HE encryptor；若未安裝 phe 會在此拋出明確錯誤
-    encryptor = PaillierEncryptor()
+    # 嘗試使用真實 Paillier HE encryptor；若未安裝 `phe`，就自動降級成 PoC stub 加密（enc(x)）
+    try:
+        encryptor = PaillierEncryptor()
+    except ImportError as e:
+        print("[WARN] `phe` is not installed; falling back to stub encryption (enc(x)).")
+        print(f"[WARN] Details: {e}")
+        encryptor = None
     pipeline = MixedProtectionPipeline(encryptor=encryptor)
 
     record = load_one_record()
