@@ -11,7 +11,7 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
 ## 架構圖
 ![APPAD 系統架構圖](APPAD.drawio.png)
 
-## 模組說明
+## 模組說明（目前主要使用）
 
 ### 1) `classifier`（敏感度判定）
 - 主要功能：判斷資料欄位或事件是否屬於敏感資訊，提供加密決策依據。
@@ -36,27 +36,60 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
   - `core/logistic_regression_plain.py`：明文資料推論流程。
   - `core/logistic_regression_server.py`：伺服端 LR 推論封裝。
   - `training/train_logistic_regression.py`：模型訓練與儲存。
-  - `inference/run_logistic_regression_inference.py`：載入模型並進行推論。
+  - `inference/inference_tools.py`：可重用推論工具（載入模型、預測機率、預設資料/模型路徑）。
+  - `inference/run_logistic_regression_inference.py`：CLI 推論腳本（呼叫 `inference_tools`）。
 - 輸出：`output_lr/` 下的模型檔、指標報告與推論結果。
 
-### 4) `data_preprocessing`（資料前處理）
-- 主要功能：提供訓練/推論前的標準化與正規化能力。
-- 核心內容：
-  - `scripts/normalize.py`：Min-Max 正規化。
-  - `scripts/standardize.py`：Standardization（Z-score）。
-- 輸出：`output/normalize/`、`output/standard/` 的處理後資料與參數檔。
-
-### 5) `ckks_homomorphic_encryption`（同態加密）
+### 4) `ckks_homomorphic_encryption`（同態加密）
 - 主要功能：封裝 CKKS 同態加密操作，供自適應保護流程使用。
 - 核心內容：
   - `he_encryptor.py`：加密/解密或密文運算相關入口。
 - 輸出：敏感欄位密文表示（供後續安全計算或傳輸）。
 
-### 6) `decision_module`（客戶端決策）
-- 主要功能：在客戶端整合模型輸出與規則結果，產生最終判定。
+### 5) `traffic_generation`（隨機流量推論與效能評估）
+- 主要功能：隨機抽樣資料集流量，分別執行明文推論與敏感資料保護後推論，輸出準確率與延遲統計。
 - 核心內容：
-  - `client_decision.py`：Client 端最終決策邏輯。
-- 輸出：異常/正常與保護策略相關的最終決策結果。
+  - `core/traffic_benchmark.py`：抽樣、保護流程、推論與評估主邏輯。
+  - `scripts/run_traffic_benchmark.py`：可直接執行的 benchmark 腳本。
+- 輸出：
+  - `traffic_generation/output/traffic_benchmark_predictions.csv`（每筆樣本結果）
+  - `traffic_generation/output/traffic_benchmark_metrics.json`（整體 accuracy/precision/recall/f1 與 latency）
+
+## 可直接引用模組與方式
+
+### 1) `classifier`
+- 可引用：`SensitivityClassifier`、`FeatureSensitivityClassifier`、`need_he_flag_for_feature`
+- 範例：
+  - `from classifier import FeatureSensitivityClassifier`
+
+### 2) `adaptive_module`
+- 可引用：`AdaptiveModule`、`APPADCore`、`MixedProtectionPipeline`
+- 範例：
+  - `from adaptive_module import MixedProtectionPipeline`
+
+### 3) `logistic_regression_model`
+- 可引用（核心）：`LogisticRegressionPlain`、`ServerLR`
+  - `from logistic_regression_model import ServerLR`
+- 可引用（推論工具）：`load_trained_model`、`predict_probabilities`、`resolve_data_dir`、`resolve_model_path`
+  - `from logistic_regression_model.inference import load_trained_model, predict_probabilities`
+
+### 4) `ckks_homomorphic_encryption`
+- 可引用：`PaillierEncryptor`
+- 範例：
+  - `from ckks_homomorphic_encryption import PaillierEncryptor`
+
+### 5) `traffic_generation`
+- 可引用：`run_traffic_benchmark`
+- 範例：
+  - `from traffic_generation import run_traffic_benchmark`
+
+## 目前不列為主要引用模組
+- `data_preprocessing`：目前主要作為既有資料輸出來源（normalized CSV）。
+- `decision_module`：目前未納入主要流程與對外引用清單。
+
+## 快速執行（流量產生與評估）
+- 隨機抽樣並比較明文/敏感保護推論（預設抽樣 500 筆）
+  - `python -m traffic_generation.scripts.run_traffic_benchmark --sample-size 500 --seed 42 --threshold 0.5`
 
 ## 專案檔案樹
 ```text
@@ -81,15 +114,6 @@ IDS_APPAD/
 │  └─ data/
 │     ├─ sample_data.py
 │     └─ sensitive_feature_list.csv
-├─ data_preprocessing/
-│  ├─ scripts/
-│  │  ├─ normalize.py
-│  │  └─ standardize.py
-│  └─ output/
-│     ├─ normalize/
-│     └─ standard/
-├─ decision_module/
-│  └─ client_decision.py
 ├─ logistic_regression_model/
 │  ├─ core/
 │  │  ├─ logistic_regression_plain.py
@@ -97,13 +121,19 @@ IDS_APPAD/
 │  ├─ training/
 │  │  └─ train_logistic_regression.py
 │  ├─ inference/
+│  │  ├─ inference_tools.py
 │  │  └─ run_logistic_regression_inference.py
 │  └─ output_lr/
+├─ traffic_generation/
+│  ├─ core/
+│  │  └─ traffic_benchmark.py
+│  ├─ scripts/
+│  │  └─ run_traffic_benchmark.py
+│  └─ output/
+├─ data_preprocessing/
+│  └─ output/
 ├─ dataset/
 │  └─ synthetic_web_auth_logs.csv
-├─ output_results/
-│  └─ mixed_protection_visualization_week6.png
 ├─ APPAD.drawio.png
-├─ conftest.py
 └─ README.md
 ```
