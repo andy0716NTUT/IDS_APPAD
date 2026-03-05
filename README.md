@@ -83,14 +83,6 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
 - 範例：
   - `from traffic_generation import run_traffic_benchmark`
 
-## 目前不列為主要引用模組
-- `data_preprocessing`：目前主要作為既有資料輸出來源（normalized CSV）。
-- `decision_module`：目前未納入主要流程與對外引用清單。
-
-## 快速執行（流量產生與評估）
-- 隨機抽樣並比較明文/敏感保護推論（預設抽樣 500 筆）
-  - `python -m traffic_generation.scripts.run_traffic_benchmark --sample-size 500 --seed 42 --threshold 0.5`
-
 ## 專案檔案樹
 ```text
 IDS_APPAD/
