@@ -1,3 +1,3 @@
-from decision_module.core.client_decision import ClientDecision
+from decision_module.client_decision import ClientDecision, DecisionResult
 
-__all__ = ["ClientDecision"]
+__all__ = ["ClientDecision", "DecisionResult"]

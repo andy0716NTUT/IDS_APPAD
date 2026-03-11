@@ -1,0 +1,391 @@
+{
+  "generated_at": "2026-03-04T10:30:25.319284+00:00",
+  "encryptor": "PaillierEncryptor(phe)",
+  "config": {
+    "routing": {
+      "latency_budget_ms": 120.0,
+      "network_rtt_ms": 30.0,
+      "prefer_he_on_medium": true
+    },
+    "decision_threshold": 0.5
+  },
+  "n": 8,
+  "results": [
+    {
+      "index": 0,
+      "record": {
+        "user_id": 689,
+        "login_status": "Success",
+        "ip_address": "192.168.1.14",
+        "location": "Canada",
+        "session_duration": 7.439980690281039,
+        "failed_attempts": 0,
+        "behavioral_score": 88.55064692438117,
+        "timestamp": "2023-08-24 13:25:34.618259",
+        "device_type": "Desktop",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": -1.1642059349044036,
+        "prob": 0.23790388507832066,
+        "is_anomaly": false,
+        "latency_ms": 0.023,
+        "latency_est_ms": 30.023
+      }
+    },
+    {
+      "index": 1,
+      "record": {
+        "user_id": 481,
+        "login_status": "Success",
+        "ip_address": "192.168.1.25",
+        "location": "Germany",
+        "session_duration": 400.5233237461515,
+        "failed_attempts": 0,
+        "behavioral_score": 92.29530574828146,
+        "timestamp": "2023-08-24 13:26:34.618259",
+        "device_type": "Mobile",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": -0.6560422586928044,
+        "prob": 0.3416292228050562,
+        "is_anomaly": false,
+        "latency_ms": 0.015,
+        "latency_est_ms": 30.021
+      }
+    },
+    {
+      "index": 2,
+      "record": {
+        "user_id": 908,
+        "login_status": "Success",
+        "ip_address": "192.168.1.54",
+        "location": "Canada",
+        "session_duration": 298.0192789890873,
+        "failed_attempts": 0,
+        "behavioral_score": 81.04429356057102,
+        "timestamp": "2023-08-24 13:27:34.618259",
+        "device_type": "Tablet",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": 0.9262860945444211,
+        "prob": 0.7163212075232085,
+        "is_anomaly": true,
+        "latency_ms": 0.009,
+        "latency_est_ms": 30.017
+      }
+    },
+    {
+      "index": 3,
+      "record": {
+        "user_id": 110,
+        "login_status": "Success",
+        "ip_address": "192.168.1.27",
+        "location": "USA",
+        "session_duration": 0.020559686898903,
+        "failed_attempts": 0,
+        "behavioral_score": 97.9267403112528,
+        "timestamp": "2023-08-24 13:28:34.618259",
+        "device_type": "Mobile",
+        "anomaly": 1
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": -1.6595079333894152,
+        "prob": 0.15982806209045344,
+        "is_anomaly": false,
+        "latency_ms": 0.009,
+        "latency_est_ms": 30.015
+      }
+    },
+    {
+      "index": 4,
+      "record": {
+        "user_id": 290,
+        "login_status": "Success",
+        "ip_address": "192.168.1.27",
+        "location": "Germany",
+        "session_duration": 409.52833096883904,
+        "failed_attempts": 0,
+        "behavioral_score": 71.3931902726231,
+        "timestamp": "2023-08-24 13:29:34.618259",
+        "device_type": "Mobile",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": 0.20885738200159265,
+        "prob": 0.5520253645553163,
+        "is_anomaly": true,
+        "latency_ms": 0.009,
+        "latency_est_ms": 30.013
+      }
+    },
+    {
+      "index": 5,
+      "record": {
+        "user_id": 991,
+        "login_status": "Success",
+        "ip_address": "192.168.1.27",
+        "location": "Japan",
+        "session_duration": 435.2985960646317,
+        "failed_attempts": 0,
+        "behavioral_score": 113.17490603063396,
+        "timestamp": "2023-08-24 13:30:34.618259",
+        "device_type": "Mobile",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": -0.7444004530314633,
+        "prob": 0.32204263627487106,
+        "is_anomaly": false,
+        "latency_ms": 0.01,
+        "latency_est_ms": 30.012
+      }
+    },
+    {
+      "index": 6,
+      "record": {
+        "user_id": 133,
+        "login_status": "Success",
+        "ip_address": "192.168.1.36",
+        "location": "Japan",
+        "session_duration": 90.54291858335628,
+        "failed_attempts": 0,
+        "behavioral_score": 77.336576389646,
+        "timestamp": "2023-08-24 13:31:34.618259",
+        "device_type": "Tablet",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": -0.4957342998357709,
+        "prob": 0.3785436465813216,
+        "is_anomaly": false,
+        "latency_ms": 0.008,
+        "latency_est_ms": 30.011
+      }
+    },
+    {
+      "index": 7,
+      "record": {
+        "user_id": 71,
+        "login_status": "Success",
+        "ip_address": "192.168.1.95",
+        "location": "Germany",
+        "session_duration": 334.6447804341672,
+        "failed_attempts": 0,
+        "behavioral_score": 66.04987276116722,
+        "timestamp": "2023-08-24 13:32:34.618259",
+        "device_type": "Desktop",
+        "anomaly": 0
+      },
+      "result": {
+        "route": "server_plain",
+        "enable_he": false,
+        "sensitivity": {
+          "is_sensitive": false,
+          "risk_score": 0.0,
+          "sensitivity_level": "LOW",
+          "encryption_required": false,
+          "reasons": []
+        },
+        "payload_summary": {
+          "plain_keys": [
+            "anomaly",
+            "behavioral_score",
+            "device_type",
+            "failed_attempts",
+            "ip_address",
+            "location",
+            "login_status",
+            "session_duration",
+            "timestamp",
+            "user_id"
+          ],
+          "encrypted_keys": []
+        },
+        "decrypted": false,
+        "z": 1.2804394308558125,
+        "prob": 0.7825245679925319,
+        "is_anomaly": true,
+        "latency_ms": 0.008,
+        "latency_est_ms": 30.01
+      }
+    }
+  ]
+}
