@@ -1,89 +1,131 @@
-# IDS_APPAD - 自適應隱私保護異常檢測系統
+# IDS_APPAD
 
-> 基於論文 **"Adaptive Privacy-Preserving Framework for Network Traffic Anomaly Detection"** 的復現實作（本專題聚焦於 **APPAD 系統**）
+APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常偵測流程中，根據資料敏感度動態決定明文或加密處理。
 
----
+## 專案目標
+- 使用 Logistic Regression 進行異常偵測
+- 以欄位/紀錄敏感度規則決定是否啟用保護
+- 支援「明文 + 密文」混合資料流（Adaptive Protection）
+- 將最終決策留在 Client 端模組
 
-## 🎯 這個系統在做什麼？
-
-簡單來說：**在偵測網路異常（可能是攻擊）的同時，對敏感資訊進行隱私保護。**
-
-- 📊 使用 Logistic Regression（LR）對流量特徵進行異常偵測
-- 🔒 若流量含敏感資訊，將敏感特徵以 **CKKS 同態加密**保護（避免伺服器端看到原始敏感值）
-- ⚡ 若流量不敏感，直接使用明文推論以降低延遲
-- 🎚️ **自適應**：根據資料敏感性決定是否啟用加密
-
----
-
-## 🏗️ 系統架構圖（APPAD）
-
+## 架構圖
 ![APPAD 系統架構圖](APPAD.drawio.png)
 
-### 架構要點（很重要）
-1. **Client（可信端）**：持有解密金鑰、負責敏感性判斷與最後決策  
-2. **Server（不可信端）**：只做 LR 推論（可以處理明文/密文混合輸入），不做解密、不做 threshold 判斷  
-3. **APPAD 的核心**  
-   - 只有 **一個 LR 推論邏輯**  
-   - 差異在於「輸入資料表示」：可能是明文或部分密文（混合）
+## 模組說明（目前主要使用）
 
----
+### 1) `classifier`（敏感度判定）
+- 主要功能：判斷資料欄位或事件是否屬於敏感資訊，提供加密決策依據。
+- 核心內容：
+  - `core/classifier.py`：敏感度分類器主流程。
+  - `core/feature_sensitivity.py`：欄位級敏感度判定與索引提取（如 `sensitive_indices`）。
+  - `core/rules.py`：敏感/非敏感規則、關鍵字與強制清單。
+- 輸出：敏感欄位清單（供 `adaptive_module` 決定哪些欄位要加密）。
 
-## 🧩 模組拆分（決策 vs 執行）
+### 2) `adaptive_module`（自適應保護與流程協調）
+- 主要功能：接收敏感欄位判定結果，對資料執行「敏感欄位加密、非敏感欄位明文」的混合保護。
+- 核心內容：
+  - `core/adaptive_module.py`：欄位級保護策略實作。
+  - `core/mixed_protection.py`：明文/密文混合處理邏輯。
+  - `core/core.py`：APPAD 核心協調流程（整合分類器、加密、模型推論）。
+  - `demo/run_mixed_protection_demo.py`：端到端示範。
+- 輸出：可供模型使用的受保護資料結構與示範結果。
 
-### 1) 隱私敏感性判斷模組（Classifier）
-**用途**：回答「這筆流量要不要保護？」（決策層）  
-- 輸入：原始流量 / 特徵（依你們設計）
+### 3) `logistic_regression_model`（異常偵測模型）
+- 主要功能：提供異常偵測模型的訓練與推論能力。
+- 核心內容：
+  - `core/logistic_regression_plain.py`：明文資料推論流程。
+  - `core/logistic_regression_server.py`：伺服端 LR 推論封裝。
+  - `training/train_logistic_regression.py`：模型訓練與儲存。
+  - `inference/inference_tools.py`：可重用推論工具（載入模型、預測機率、預設資料/模型路徑）。
+  - `inference/run_logistic_regression_inference.py`：CLI 推論腳本（呼叫 `inference_tools`）。
+- 輸出：`output_lr/` 下的模型檔、指標報告與推論結果。
+
+### 4) `ckks_homomorphic_encryption`（同態加密）
+- 主要功能：封裝 CKKS 同態加密操作，供自適應保護流程使用。
+- 核心內容：
+  - `he_encryptor.py`：加密/解密或密文運算相關入口。
+- 輸出：敏感欄位密文表示（供後續安全計算或傳輸）。
+
+### 5) `traffic_generation`（隨機流量推論與效能評估）
+- 主要功能：隨機抽樣資料集流量，分別執行明文推論與敏感資料保護後推論，輸出準確率與延遲統計。
+- 核心內容：
+  - `core/traffic_benchmark.py`：抽樣、保護流程、推論與評估主邏輯。
+  - `scripts/run_traffic_benchmark.py`：可直接執行的 benchmark 腳本。
 - 輸出：
-  - `flag ∈ {0,1}`（是否需要加密保護）
-  - `sensitive_idx`（哪些特徵屬於敏感範圍；可先用規則/表格定義，後續再用模型權重校正）
+  - `traffic_generation/output/traffic_benchmark_predictions.csv`（每筆樣本結果）
+  - `traffic_generation/output/traffic_benchmark_metrics.json`（整體 accuracy/precision/recall/f1 與 latency）
 
-> ✅ Classifier **不做加密**，只做判斷。
+## 可直接引用模組與方式
 
----
+### 1) `classifier`
+- 可引用：`SensitivityClassifier`、`FeatureSensitivityClassifier`、`need_he_flag_for_feature`
+- 範例：
+  - `from classifier import FeatureSensitivityClassifier`
 
-### 2) 自適應保護模組（Adaptive Module）
-**用途**：回答「既然要保護，要怎麼保護？」（執行層）  
-- 輸入：`x`（特徵向量）、`flag`、`sensitive_idx`
-- 輸出：送往 server 的 `payload`（包含明文部分 + 密文部分）
+### 2) `adaptive_module`
+- 可引用：`AdaptiveModule`、`APPADCore`、`MixedProtectionPipeline`
+- 範例：
+  - `from adaptive_module import MixedProtectionPipeline`
 
-> ✅ Adaptive Module 會呼叫 CKKS 加密（必要時），並組裝資料封包。
+### 3) `logistic_regression_model`
+- 可引用（核心）：`LogisticRegressionPlain`、`ServerLR`
+  - `from logistic_regression_model import ServerLR`
+- 可引用（推論工具）：`load_trained_model`、`predict_probabilities`、`resolve_data_dir`、`resolve_model_path`
+  - `from logistic_regression_model.inference import load_trained_model, predict_probabilities`
 
----
+### 4) `ckks_homomorphic_encryption`
+- 可引用：`PaillierEncryptor`
+- 範例：
+  - `from ckks_homomorphic_encryption import PaillierEncryptor`
 
-### 3) LR 推論模組（Server Side）
-**用途**：在不可信端完成 LR 的推論計算  
-- 輸入：`payload`（可能是明文/密文混合）
-- 輸出：`z`（明文 logit）或 `z_enc`（密文 logit）
+### 5) `traffic_generation`
+- 可引用：`run_traffic_benchmark`
+- 範例：
+  - `from traffic_generation import run_traffic_benchmark`
 
-> ✅ Server 不做 threshold、不做最終分類（因為密文下不適合做比較）
-
----
-
-### 4) 解密與決策模組（Client Side Decision）
-**用途**：在可信端完成最終判斷  
-- 若收到 `z_enc`：先解密得到 `z`
-- 再做 `z > threshold`（或 sigmoid 後判斷）
-
-> ✅ 最終 anomaly/normal 必須在 Client 端。
-
----
-
-## 📌 資料集
-
-- **Web_Auth_Anomaly_Detection dataset**
-- 本 repo 的 HE PoC 會從 dataset 中抽樣取特徵向量做測試
----
-
-## ✅ HE PoC（Week 1）做什麼、為什麼要做？
-
-本專題的 HE PoC 目標是驗證「APPAD 密文推論的最小可行性」：
-
-1. 建立 CKKS context  
-2. 加密/解密真實特徵向量（確認精度與可用性）  
-3. 同態加法（加總）  
-4. 同態內積（LR 推論核心：`w·x`）  
-5. 比對明文結果與解密結果誤差、並量測延遲
-
-
----
-
+## 專案檔案樹
+```text
+IDS_APPAD/
+├─ adaptive_module/
+│  ├─ core/
+│  │  ├─ adaptive_module.py
+│  │  ├─ core.py
+│  │  └─ mixed_protection.py
+│  └─ demo/
+│     └─ run_mixed_protection_demo.py
+├─ ckks_homomorphic_encryption/
+│  └─ he_encryptor.py
+├─ classifier/
+│  ├─ core/
+│  │  ├─ classifier.py
+│  │  ├─ feature_sensitivity.py
+│  │  └─ rules.py
+│  ├─ scripts/
+│  │  ├─ run_dataset.py
+│  │  └─ run_generate_sensitive_feature_list.py
+│  └─ data/
+│     ├─ sample_data.py
+│     └─ sensitive_feature_list.csv
+├─ logistic_regression_model/
+│  ├─ core/
+│  │  ├─ logistic_regression_plain.py
+│  │  └─ logistic_regression_server.py
+│  ├─ training/
+│  │  └─ train_logistic_regression.py
+│  ├─ inference/
+│  │  ├─ inference_tools.py
+│  │  └─ run_logistic_regression_inference.py
+│  └─ output_lr/
+├─ traffic_generation/
+│  ├─ core/
+│  │  └─ traffic_benchmark.py
+│  ├─ scripts/
+│  │  └─ run_traffic_benchmark.py
+│  └─ output/
+├─ data_preprocessing/
+│  └─ output/
+├─ dataset/
+│  └─ synthetic_web_auth_logs.csv
+├─ APPAD.drawio.png
+└─ README.md
+```
