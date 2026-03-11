@@ -1,5 +1,4 @@
 {
-  "scaler": "MinMaxScaler",
   "columns": [
     "User ID",
     "Session Duration",
@@ -7,6 +6,11 @@
     "Behavioral Score",
     "Anomaly"
   ],
+  "train_ratio": 0.7,
+  "val_ratio": 0.15,
+  "seed": 42,
+  "input": "dataset\\synthetic_web_auth_logs.csv",
+  "scaler": "MinMaxScaler",
   "min": [
     1.0,
     0.0,
@@ -24,9 +28,5 @@
   "feature_range": [
     0,
     1
-  ],
-  "train_ratio": 0.7,
-  "val_ratio": 0.15,
-  "seed": 42,
-  "input": "dataset\\synthetic_web_auth_logs.csv"
+  ]
 }

@@ -1,5 +1,4 @@
 {
-  "scaler": "StandardScaler",
   "columns": [
     "User ID",
     "Session Duration",
@@ -7,6 +6,11 @@
     "Behavioral Score",
     "Anomaly"
   ],
+  "train_ratio": 0.7,
+  "val_ratio": 0.15,
+  "seed": 42,
+  "input": "dataset\\synthetic_web_auth_logs.csv",
+  "scaler": "StandardScaler",
   "mean": [
     496.0665809401343,
     290.1871261673597,
@@ -27,9 +31,5 @@
     0.2651060657104874,
     136.6803189106643,
     0.14697541854865845
-  ],
-  "train_ratio": 0.7,
-  "val_ratio": 0.15,
-  "seed": 42,
-  "input": "dataset\\synthetic_web_auth_logs.csv"
+  ]
 }
