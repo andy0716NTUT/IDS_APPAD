@@ -205,3 +205,14 @@ def run_traffic_benchmark(
         json.dump(results, f, ensure_ascii=False, indent=2)
 
     return results
+
+if __name__ == "__main__":
+
+    results = run_traffic_benchmark(
+        sample_size=10,
+        seed=42,
+        threshold=0.5,
+    )
+
+    import json
+    print(json.dumps(results, indent=2))

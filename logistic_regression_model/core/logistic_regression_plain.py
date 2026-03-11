@@ -1,32 +1,36 @@
 import math
+from logistic_regression_model.inference.inference_tools import FEATURE_COLS
+
 
 class LogisticRegressionPlain:
     """
-    Simple Logistic Regression (Plaintext)
-    z = w·x + b
-    p = sigmoid(z)
+    Logistic Regression (Plaintext)
+    使用 sklearn 訓練好的模型權重
     """
 
-    def __init__(self):
-        # 這裡先用「合理假權重」
-        # 之後可以：
-        # 1. 用 sklearn 訓練後塞進來
-        # 2. 或從 NN / paper 轉來
-        self.weights = {
-            "session_duration": 0.003,
-            "failed_attempts": 0.6,
-            "behavioral_score": -0.04
-        }
-        self.bias = -1.5
+    def __init__(self, sklearn_model):
+
+        # sklearn LR
+        self.weights = sklearn_model.coef_[0]
+        self.bias = float(sklearn_model.intercept_[0])
+
+        # 與 inference_tools 保持一致
+        self.feature_cols = FEATURE_COLS
 
     def sigmoid(self, z: float) -> float:
         return 1 / (1 + math.exp(-z))
 
     def predict_proba(self, record: dict) -> float:
+
         z = self.bias
 
-        for feature, w in self.weights.items():
-            value = record.get(feature, 0) or 0
-            z += w * float(value)
+        for i, feature in enumerate(self.feature_cols):
+
+            value = record.get(feature, 0)
+
+            if value is None:
+                value = 0
+
+            z += self.weights[i] * float(value)
 
         return round(self.sigmoid(z), 3)
