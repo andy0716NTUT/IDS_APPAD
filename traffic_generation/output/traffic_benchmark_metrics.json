@@ -1,0 +1,35 @@
+{
+  "config": {
+    "dataset_path": "data_preprocessing/output/normalize/test_normalized.csv",
+    "model_path": "logistic_regression_model/output_lr/lr_model.joblib",
+    "output_dir": "traffic_generation/output",
+    "sample_size_requested": 20,
+    "sample_size_actual": 20,
+    "seed": 42,
+    "threshold": 0.5
+  },
+  "plaintext": {
+    "metrics": {
+      "accuracy": 0.85
+    },
+    "latency_ms": {
+      "avg": 0.2181,
+      "max": 0.6738,
+      "min": 0.1689
+    }
+  },
+  "sensitive_protected": {
+    "metrics": {
+      "accuracy": 0.85
+    },
+    "latency_ms": {
+      "avg": 0.2038,
+      "max": 0.3389,
+      "min": 0.1726
+    }
+  },
+  "comparison": {
+    "accuracy_delta": 0.0,
+    "avg_latency_delta_ms": -0.0143
+  }
+}
