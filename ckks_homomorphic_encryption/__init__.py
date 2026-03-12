@@ -1,4 +1,4 @@
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 
-__all__ = ["PaillierEncryptor"]
+__all__ = ["CKKSEncryptor"]
 

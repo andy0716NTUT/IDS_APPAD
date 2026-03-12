@@ -11,7 +11,7 @@ import pandas as pd
 from matplotlib.patches import Patch
 
 from adaptive_module.core.mixed_protection import MixedProtectionPipeline
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 
 
 # 與資料前處理/分類模組保持一致的欄位映射：CSV → 內部欄位名稱
@@ -156,8 +156,8 @@ def summarize_structure_diff(
 
 
 def main() -> None:
-    # 使用真實 Paillier HE encryptor；若未安裝 phe 會在此拋出明確錯誤
-    encryptor = PaillierEncryptor()
+    # 使用真實 CKKS HE encryptor；若未安裝 tenseal 會在此拋出明確錯誤
+    encryptor = CKKSEncryptor()
     pipeline = MixedProtectionPipeline(encryptor=encryptor)
 
     record = load_one_record()

@@ -1,0 +1,33 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# Test cache
+.pytest_cache/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Python tooling cache
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Generated outputs
+output_results/
+logistic_regression_model/output_lr/
+traffic_generation/output/
+data_preprocessing/output/

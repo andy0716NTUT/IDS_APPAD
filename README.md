@@ -74,14 +74,33 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
   - `from logistic_regression_model.inference import load_trained_model, predict_probabilities`
 
 ### 4) `ckks_homomorphic_encryption`
-- 可引用：`PaillierEncryptor`
+- 可引用：`CKKSEncryptor`
 - 範例：
-  - `from ckks_homomorphic_encryption import PaillierEncryptor`
+  - `from ckks_homomorphic_encryption import CKKSEncryptor`
 
 ### 5) `traffic_generation`
 - 可引用：`run_traffic_benchmark`
 - 範例：
   - `from traffic_generation import run_traffic_benchmark`
+
+## `main.py` 執行方式
+
+`main.py` 為專案整合入口，支援：
+- 流量抽樣
+- 敏感度判斷
+- 明文推論（`plaintext`）或 CKKS 隱私推論（`ckks`）
+- 輸出預測結果與整體指標（accuracy / detection efficiency / latency）
+
+### 指令參數
+- `--dataset-path`：資料集 CSV 路徑（預設：`dataset/synthetic_web_auth_logs.csv`）
+- `--sample-size`：抽樣筆數（預設：`500`）
+- `--seed`：抽樣 random seed（預設：`42`）
+- `--inference-mode`：推論模式，`plaintext` 或 `ckks`（預設：`plaintext`）
+- `--output-dir`：輸出資料夾（預設：`output_results`）
+
+### 輸出檔案
+- `output_results/appad_main_predictions_<mode>.csv`
+- `output_results/appad_main_metrics_<mode>.json`
 
 ## 專案檔案樹
 ```text
