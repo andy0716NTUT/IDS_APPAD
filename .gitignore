@@ -1,6 +1,7 @@
 # Python cache files
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 
 # Virtual environments
@@ -9,9 +10,6 @@ __pycache__/
 venv/
 env/
 ENV/
-
-# Test cache
-.pytest_cache/
 
 # IDE/editor
 .vscode/
