@@ -37,6 +37,17 @@ class LogisticRegressionCKKS:
         z3 = z2 * z_enc
         return (z_enc * 0.197) + (z3 * -0.004) + 0.5
 
+    @staticmethod
+    def _to_encryptable_scalar(value: Any) -> float:
+        """
+        Convert arbitrary field values into a numeric scalar for CKKS encryption.
+        Non-numeric values are represented by UTF-8 byte length to keep privacy accounting consistent.
+        """
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(len(str(value).encode("utf-8")))
+
     def predict_proba(
         self,
         record: dict[str, Any],
@@ -51,12 +62,19 @@ class LogisticRegressionCKKS:
         z_enc = self.encryptor.encrypt(0.0)
         encrypted_feature_list: list[str] = []
 
+        encrypted_sensitive_values: dict[str, Any] = {}
+        for feature in sorted(sensitive):
+            if feature not in record:
+                continue
+            value = self._to_encryptable_scalar(record.get(feature, 0.0))
+            encrypted_sensitive_values[feature] = self.encryptor.encrypt(value)
+            encrypted_feature_list.append(feature)
+
         for feature, w in self.weights.items():
             value = float(record.get(feature, 0.0) or 0.0)
-            if feature in sensitive:
-                enc_x = self.encryptor.encrypt(value)
+            if feature in encrypted_sensitive_values:
+                enc_x = encrypted_sensitive_values[feature]
                 z_enc = z_enc + (enc_x * w)
-                encrypted_feature_list.append(feature)
             else:
                 z_plain_part += w * value
 

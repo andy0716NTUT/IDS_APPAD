@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -14,6 +15,7 @@ from classifier.core.classifier import SensitivityClassifier
 from classifier.core.feature_sensitivity import FeatureSensitivityClassifier
 from logistic_regression_model.inference.logistic_regression_ckks import LogisticRegressionCKKS
 from logistic_regression_model.core.logistic_regression_plain import LogisticRegressionPlain
+from logistic_regression_model.inference.inference_tools import resolve_model_path, load_trained_model
 
 
 CSV_TO_INTERNAL = {
@@ -30,6 +32,8 @@ CSV_TO_INTERNAL = {
 }
 
 DEFAULT_THRESHOLD = 0.5
+DEFAULT_PRIVACY_RATIOS = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+EFFICIENCY_EPSILON = 1e-12
 
 
 def resolve_default_dataset() -> Path:
@@ -44,6 +48,277 @@ def to_internal_record(row: pd.Series) -> dict[str, Any]:
     return out
 
 
+def parse_ratio_list(ratio_text: str) -> list[int]:
+    ratios = [int(part.strip()) for part in ratio_text.split(",") if part.strip()]
+    if not ratios:
+        raise ValueError("privacy-ratios cannot be empty")
+    dedup = sorted(set(ratios))
+    for value in dedup:
+        if value < 0 or value > 100:
+            raise ValueError("privacy-ratios must be in [0, 100]")
+    return dedup
+
+
+def select_sensitive_traffic_indices(total_count: int, ratio_percent: int, seed: int) -> set[int]:
+    if total_count <= 0:
+        return set()
+
+    ratio = max(0.0, min(1.0, ratio_percent / 100.0))
+    sensitive_count = int(round(total_count * ratio))
+    sensitive_count = max(0, min(sensitive_count, total_count))
+
+    rng = np.random.default_rng(seed)
+    selected = rng.choice(total_count, size=sensitive_count, replace=False)
+    return set(int(v) for v in selected)
+
+
+def calc_flow_size_bits(record: dict[str, Any]) -> int:
+    non_label_fields = [k for k in record.keys() if k != "anomaly"]
+    total_bytes = sum(len(str(record[k]).encode("utf-8")) for k in non_label_fields)
+    return int(total_bytes * 8)
+
+
+def calc_traffic_breakdown_bytes(
+    record: dict[str, Any],
+    sensitive_fields: set[str],
+    encrypted_fields: list[str],
+) -> dict[str, int]:
+    non_label_fields = {k for k in record.keys() if k != "anomaly"}
+    sensitive_non_label_fields = {k for k in sensitive_fields if k in non_label_fields}
+    encrypted_non_label_fields = {k for k in encrypted_fields if k in non_label_fields}
+
+    ciphertext_sensitive_fields = encrypted_non_label_fields & sensitive_non_label_fields
+    ciphertext_nonsensitive_fields = encrypted_non_label_fields - sensitive_non_label_fields
+    plaintext_sensitive_fields = sensitive_non_label_fields - encrypted_non_label_fields
+    plaintext_nonsensitive_fields = (non_label_fields - sensitive_non_label_fields) - ciphertext_nonsensitive_fields
+
+    return {
+        "plaintext_nonsensitive": int(sum(len(str(record[k]).encode("utf-8")) for k in plaintext_nonsensitive_fields)),
+        "ciphertext_sensitive": int(sum(len(str(record[k]).encode("utf-8")) for k in ciphertext_sensitive_fields)),
+    }
+
+
+def init_models(inference_mode: str, allow_plaintext_fallback: bool) -> tuple[str, LogisticRegressionPlain, LogisticRegressionCKKS | None]:
+    effective_mode = inference_mode
+    plain_model = LogisticRegressionPlain()
+    ckks_model: LogisticRegressionCKKS | None = None
+
+    if inference_mode in {"ckks", "mixed"}:
+        try:
+            ckks_model = LogisticRegressionCKKS()
+        except Exception as exc:
+            if allow_plaintext_fallback:
+                effective_mode = "plaintext"
+                print(f"[WARN] CKKS unavailable; fallback to plaintext: {exc}")
+            else:
+                raise
+
+    return effective_mode, plain_model, ckks_model
+
+
+def _plot_metric(
+    x_values: list[int],
+    y_values: list[float],
+    y_label: str,
+    output_path: Path,
+    y_limits: tuple[float, float] | None = None,
+) -> None:
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), dpi=120)
+    ax.set_facecolor("#E7E7E7")
+
+    ax.plot(
+        x_values,
+        y_values,
+        linestyle=(0, (5, 4)),
+        color="#1F1F1F",
+        marker="^",
+        markersize=6,
+        markerfacecolor="none",
+        markeredgecolor="#1F1F1F",
+        markeredgewidth=1.2,
+        linewidth=1.3,
+        label="APPAD",
+    )
+
+    ax.grid(True, color="#BDBDBD", linewidth=1.0)
+    ax.set_xlabel("Privacy-sensitive data ratio (%)", fontsize=14, fontweight="bold")
+    ax.set_ylabel(y_label, fontsize=14, fontweight="bold")
+    ax.set_xticks(x_values)
+    if y_limits is not None:
+        ax.set_ylim(*y_limits)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.2)
+
+    ax.legend(
+        loc="best",
+        frameon=True,
+        facecolor="#E7E7E7",
+        edgecolor="black",
+        framealpha=1.0,
+        fancybox=False,
+    )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300)
+    plt.close(fig)
+
+
+def run_privacy_ratio_sweep(
+    sampled_df: pd.DataFrame,
+    privacy_ratios: list[int],
+    seed: int,
+    inference_mode: str,
+    plain_model: LogisticRegressionPlain,
+    ckks_model: LogisticRegressionCKKS | None,
+    feature_sensitivity_classifier: FeatureSensitivityClassifier,
+    output_dir: Path,
+) -> None:
+    rows: list[dict[str, float]] = []
+
+    for ratio_percent in privacy_ratios:
+        y_true: list[int] = []
+        y_pred: list[int] = []
+        latencies_sec: list[float] = []
+        leaked_sensitive_flags: list[int] = []
+        flow_size_bits: list[int] = []
+        traffic_breakdown_bytes = {
+            "plaintext_nonsensitive": 0,
+            "ciphertext_sensitive": 0,
+        }
+
+        sensitive_traffic_idx = select_sensitive_traffic_indices(
+            total_count=len(sampled_df),
+            ratio_percent=ratio_percent,
+            seed=seed + ratio_percent,
+        )
+
+        for idx, row in sampled_df.iterrows():
+            record = to_internal_record(row)
+            is_sensitive_traffic = idx in sensitive_traffic_idx
+            sensitive_fields = set(feature_sensitivity_classifier.sensitive_indices(record)) if is_sensitive_traffic else set()
+
+            start = time.perf_counter()
+            if inference_mode == "ckks":
+                if ckks_model is None:
+                    raise RuntimeError("CKKS model is not initialized")
+                prob, _, encrypted_feature_list = ckks_model.predict_proba(record=record, sensitive_fields=sensitive_fields)
+            elif inference_mode == "mixed":
+                if is_sensitive_traffic:
+                    if ckks_model is None:
+                        raise RuntimeError("CKKS model is not initialized")
+                    prob, _, encrypted_feature_list = ckks_model.predict_proba(record=record, sensitive_fields=sensitive_fields)
+                else:
+                    prob = float(plain_model.predict_proba(record))
+                    encrypted_feature_list = []
+            else:
+                prob = float(plain_model.predict_proba(record))
+                encrypted_feature_list = []
+
+            pred = int(prob >= DEFAULT_THRESHOLD)
+            latency_sec = time.perf_counter() - start
+
+            leaked_sensitive = int(is_sensitive_traffic and len(encrypted_feature_list) == 0)
+            row_breakdown = calc_traffic_breakdown_bytes(
+                record=record,
+                sensitive_fields=sensitive_fields,
+                encrypted_fields=encrypted_feature_list,
+            )
+
+            label = int(row["Anomaly"])
+            y_true.append(label)
+            y_pred.append(pred)
+            latencies_sec.append(latency_sec)
+            leaked_sensitive_flags.append(leaked_sensitive)
+            flow_size_bits.append(calc_flow_size_bits(record))
+            for key in traffic_breakdown_bytes:
+                traffic_breakdown_bytes[key] += row_breakdown[key]
+
+        y_true_arr = np.asarray(y_true, dtype=np.int64)
+        y_pred_arr = np.asarray(y_pred, dtype=np.int64)
+        latency_arr = np.asarray(latencies_sec, dtype=np.float64)
+
+        accuracy = float(accuracy_score(y_true_arr, y_pred_arr))
+        n_flows = int(len(sampled_df))
+        p_sensitive = float(np.mean(np.asarray(leaked_sensitive_flags, dtype=np.float64))) if leaked_sensitive_flags else 0.0
+        l_flow_size = float(np.mean(np.asarray(flow_size_bits, dtype=np.float64))) if flow_size_bits else 0.0
+        d_latency = float(latency_arr.mean()) if len(latency_arr) else 0.0
+        lt_information_leakage = float(n_flows * p_sensitive * l_flow_size)
+
+        # Paper-aligned non-zero assumption for Lt in efficiency computation.
+        d_latency_eff = max(d_latency, EFFICIENCY_EPSILON)
+        lt_eff = max(lt_information_leakage, EFFICIENCY_EPSILON)
+        detection_efficiency = float(accuracy / (d_latency_eff * lt_eff))
+
+        rows.append(
+            {
+                "privacy_sensitive_data_ratio": float(ratio_percent),
+                "accuracy": accuracy,
+                "latency_sec": d_latency,
+                "information_leakage": lt_information_leakage,
+                "detection_efficiency": detection_efficiency,
+                "plaintext_nonsensitive_bytes": float(traffic_breakdown_bytes["plaintext_nonsensitive"]),
+                "ciphertext_sensitive_bytes": float(traffic_breakdown_bytes["ciphertext_sensitive"]),
+            }
+        )
+
+        print(
+            "[ratio={}%] 明文/非敏感={} bytes, 密文/敏感={} bytes".format(
+                ratio_percent,
+                traffic_breakdown_bytes["plaintext_nonsensitive"],
+                traffic_breakdown_bytes["ciphertext_sensitive"],
+            )
+        )
+
+    sweep_df = pd.DataFrame(rows).sort_values("privacy_sensitive_data_ratio").reset_index(drop=True)
+    plot_dir = output_dir / "privacy_ratio_plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics_csv_path = plot_dir / "appad_metrics_vs_privacy_ratio.csv"
+    sweep_df.to_csv(metrics_csv_path, index=False)
+
+    x_values = sweep_df["privacy_sensitive_data_ratio"].astype(int).tolist()
+    _plot_metric(
+        x_values=x_values,
+        y_values=sweep_df["accuracy"].tolist(),
+        y_label="Accuracy",
+        output_path=plot_dir / "appad_accuracy_vs_privacy_ratio.png",
+        y_limits=(0.0, 1.0),
+    )
+    _plot_metric(
+        x_values=x_values,
+        y_values=sweep_df["latency_sec"].tolist(),
+        y_label="Latency (sec)",
+        output_path=plot_dir / "appad_latency_vs_privacy_ratio.png",
+    )
+    _plot_metric(
+        x_values=x_values,
+        y_values=sweep_df["information_leakage"].tolist(),
+        y_label="Information Leakage",
+        output_path=plot_dir / "appad_information_leakage_vs_privacy_ratio.png",
+    )
+    _plot_metric(
+        x_values=x_values,
+        y_values=sweep_df["detection_efficiency"].tolist(),
+        y_label="Detection Efficiency",
+        output_path=plot_dir / "appad_detection_efficiency_vs_privacy_ratio.png",
+    )
+
+    summary = {
+        "sample_size": int(len(sampled_df)),
+        "privacy_ratios": x_values,
+        "inference_mode": inference_mode,
+        "metrics_csv": str(metrics_csv_path),
+    }
+    summary_path = plot_dir / "appad_privacy_ratio_plot_summary.json"
+    with summary_path.open("w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+
+    print("Privacy-ratio sweep complete.")
+    print(f"Sweep metrics CSV saved to: {metrics_csv_path}")
+    print(f"Sweep summary saved to: {summary_path}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -52,19 +327,36 @@ def parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("--dataset-path", type=str, default=str(resolve_default_dataset()))
+    parser.add_argument("--model-path", type=str, default=str(resolve_model_path()))
     parser.add_argument("--sample-size", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--inference-mode",
         type=str,
-        choices=["plaintext", "ckks"],
-        default="plaintext",
-        help="Choose inference path: plaintext or CKKS privacy inference",
+        choices=["plaintext", "ckks", "mixed"],
+        default="mixed",
+        help="Choose inference path: plaintext, ckks, or mixed (recommended default).",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
         default=str(Path(__file__).resolve().parent / "output_results"),
+    )
+    parser.add_argument(
+        "--skip-privacy-ratio-sweep",
+        action="store_true",
+        help="Skip privacy-sensitive data ratio sweep (default behavior is to run and regenerate plots).",
+    )
+    parser.add_argument(
+        "--privacy-ratios",
+        type=str,
+        default=",".join(str(v) for v in DEFAULT_PRIVACY_RATIOS),
+        help="Comma-separated privacy-sensitive data ratios. Example: 10,20,30,...,90",
+    )
+    parser.add_argument(
+        "--allow-plaintext-fallback",
+        action="store_true",
+        help="When ckks mode is requested but unavailable, fallback to plaintext.",
     )
     return parser.parse_args()
 
@@ -76,10 +368,19 @@ def main() -> None:
         raise ValueError("sample_size must be > 0")
 
     dataset_path = Path(args.dataset_path)
+    model_path = Path(args.model_path)
     output_dir = Path(args.output_dir)
 
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Model file not found: {model_path}. "
+            "Please train the model first (logistic_regression_model/training/train_logistic_regression.py)."
+        )
+
+    # Ensure the model artifact is valid and loadable at runtime.
+    _ = load_trained_model(model_path)
 
     df = pd.read_csv(dataset_path)
     if "Anomaly" not in df.columns:
@@ -90,17 +391,21 @@ def main() -> None:
 
     classifier = SensitivityClassifier()
     feature_sensitivity_classifier = FeatureSensitivityClassifier()
-    plain_model = LogisticRegressionPlain()
-
-    ckks_model: LogisticRegressionCKKS | None = None
-    if args.inference_mode == "ckks":
-        ckks_model = LogisticRegressionCKKS()
+    privacy_ratios = parse_ratio_list(args.privacy_ratios)
+    effective_mode, plain_model, ckks_model = init_models(
+        inference_mode=args.inference_mode,
+        allow_plaintext_fallback=args.allow_plaintext_fallback,
+    )
 
     y_true: list[int] = []
     y_pred: list[int] = []
-    latencies_ms: list[float] = []
-    sensitive_ratio_per_flow: list[float] = []
-    flow_size_bytes: list[int] = []
+    latencies_sec: list[float] = []
+    leaked_sensitive_flags: list[int] = []
+    flow_size_bits: list[int] = []
+    traffic_breakdown_bytes = {
+        "plaintext_nonsensitive": 0,
+        "ciphertext_sensitive": 0,
+    }
     rows: list[dict[str, Any]] = []
 
     for idx, row in sampled_df.iterrows():
@@ -110,35 +415,40 @@ def main() -> None:
         sensitivity = classifier.classify(record)
         sensitive_fields = set(feature_sensitivity_classifier.sensitive_indices(record))
 
-        # Formula terms for information leakage (Lt = N * p * l)
-        non_label_fields = [k for k in record.keys() if k != "anomaly"]
-        sensitive_non_label_fields = [k for k in sensitive_fields if k != "anomaly"]
-        p_i = len(sensitive_non_label_fields) / max(len(non_label_fields), 1)
-        l_i = sum(len(str(record[k]).encode("utf-8")) for k in non_label_fields)
-
-        if args.inference_mode == "ckks":
+        if effective_mode in {"ckks", "mixed"}:
             if ckks_model is None:
                 raise RuntimeError("CKKS model is not initialized")
             prob, _, encrypted_feature_list = ckks_model.predict_proba(
                 record=record,
                 sensitive_fields=sensitive_fields,
             )
-            detection_path = "ckks_privacy_inference"
+            detection_path = "mixed_privacy_inference" if effective_mode == "mixed" else "ckks_privacy_inference"
         else:
             prob = float(plain_model.predict_proba(record))
             encrypted_feature_list = []
             detection_path = "plaintext_inference"
 
+        is_sensitive_traffic = bool(sensitivity["is_sensitive"])
+        leaked_sensitive = int(is_sensitive_traffic and len(encrypted_feature_list) == 0)
+        unencrypted_sensitive_fields = sorted(list(sensitive_fields - set(encrypted_feature_list))) if leaked_sensitive else []
+        row_breakdown = calc_traffic_breakdown_bytes(
+            record=record,
+            sensitive_fields=sensitive_fields,
+            encrypted_fields=encrypted_feature_list,
+        )
+
         pred = int(prob >= DEFAULT_THRESHOLD)
 
-        latency_ms = (time.perf_counter() - start) * 1000.0
+        latency_sec = time.perf_counter() - start
 
         label = int(row["Anomaly"])
         y_true.append(label)
         y_pred.append(pred)
-        latencies_ms.append(latency_ms)
-        sensitive_ratio_per_flow.append(p_i)
-        flow_size_bytes.append(l_i)
+        latencies_sec.append(latency_sec)
+        leaked_sensitive_flags.append(leaked_sensitive)
+        flow_size_bits.append(calc_flow_size_bits(record))
+        for key in traffic_breakdown_bytes:
+            traffic_breakdown_bytes[key] += row_breakdown[key]
 
         rows.append(
             {
@@ -155,42 +465,46 @@ def main() -> None:
                 "sensitive_fields": "|".join(sorted(sensitive_fields)),
                 "encrypted_fields": "|".join(encrypted_feature_list),
                 "encrypted_field_count": len(encrypted_feature_list),
-                "latency_ms": round(latency_ms, 4),
+                "unencrypted_sensitive_fields": "|".join(unencrypted_sensitive_fields),
+                "unencrypted_sensitive_field_count": len(unencrypted_sensitive_fields),
+                "latency_sec": round(latency_sec, 6),
                 "reasons": "|".join(sensitivity["reasons"]),
             }
         )
 
     y_true_arr = np.asarray(y_true, dtype=np.int64)
     y_pred_arr = np.asarray(y_pred, dtype=np.int64)
-    latency_arr = np.asarray(latencies_ms, dtype=np.float64)
+    latency_arr = np.asarray(latencies_sec, dtype=np.float64)
 
     accuracy = float(accuracy_score(y_true_arr, y_pred_arr))
     precision = float(precision_score(y_true_arr, y_pred_arr, zero_division=0))
     recall = float(recall_score(y_true_arr, y_pred_arr, zero_division=0))
     f1 = float(f1_score(y_true_arr, y_pred_arr, zero_division=0))
 
-    # Detection Efficiency formula from spec:
+    # Detection efficiency formula from paper:
     #   Lt = N * p * l
     #   Meff = Acc / (d * Lt)
     n_flows = int(sample_n)
-    p_sensitive = float(np.mean(np.asarray(sensitive_ratio_per_flow, dtype=np.float64))) if sensitive_ratio_per_flow else 0.0
-    l_flow_size = float(np.mean(np.asarray(flow_size_bytes, dtype=np.float64))) if flow_size_bytes else 0.0
+    p_sensitive = float(np.mean(np.asarray(leaked_sensitive_flags, dtype=np.float64))) if leaked_sensitive_flags else 0.0
+    l_flow_size = float(np.mean(np.asarray(flow_size_bits, dtype=np.float64))) if flow_size_bits else 0.0
     d_latency = float(latency_arr.mean()) if len(latency_arr) else 0.0
     lt_information_leakage = float(n_flows * p_sensitive * l_flow_size)
 
-    if d_latency > 0.0 and lt_information_leakage > 0.0:
-        detection_efficiency = float(accuracy / (d_latency * lt_information_leakage))
-    else:
-        detection_efficiency = 0.0
+    # Paper-aligned non-zero assumption for Lt in efficiency computation.
+    d_latency_eff = max(d_latency, EFFICIENCY_EPSILON)
+    lt_eff = max(lt_information_leakage, EFFICIENCY_EPSILON)
+    detection_efficiency = float(accuracy / (d_latency_eff * lt_eff))
 
     results = {
         "config": {
             "dataset_path": str(dataset_path),
+            "model_path": str(model_path),
             "sample_size_requested": int(args.sample_size),
             "sample_size_actual": int(sample_n),
             "seed": int(args.seed),
             "threshold": DEFAULT_THRESHOLD,
-            "inference_mode": args.inference_mode,
+            "inference_mode_requested": args.inference_mode,
+            "inference_mode_used": effective_mode,
         },
         "metrics": {
             "accuracy": round(accuracy, 4),
@@ -208,16 +522,20 @@ def main() -> None:
             "Lt": round(lt_information_leakage, 6),
             "definition": "detection_efficiency = accuracy / (d * Lt), Lt = N * p * l",
         },
-        "latency_ms": {
+        "latency_sec": {
             "avg": round(float(latency_arr.mean()), 4),
             "max": round(float(latency_arr.max()), 4),
             "min": round(float(latency_arr.min()), 4),
         },
+        "traffic_breakdown_bytes": {
+            "plaintext_nonsensitive": int(traffic_breakdown_bytes["plaintext_nonsensitive"]),
+            "ciphertext_sensitive": int(traffic_breakdown_bytes["ciphertext_sensitive"]),
+        },
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    pred_path = output_dir / f"appad_main_predictions_{args.inference_mode}.csv"
-    metrics_path = output_dir / f"appad_main_metrics_{args.inference_mode}.json"
+    pred_path = output_dir / f"appad_main_predictions_{effective_mode}.csv"
+    metrics_path = output_dir / f"appad_main_metrics_{effective_mode}.json"
 
     pd.DataFrame(rows).to_csv(pred_path, index=False)
     with metrics_path.open("w", encoding="utf-8") as f:
@@ -227,13 +545,31 @@ def main() -> None:
     print(f"Predictions saved to: {pred_path}")
     print(f"Metrics saved to: {metrics_path}")
     print(
-        "Accuracy={:.4f}, Information Leakage(Lt)={:.4f}, Detection Efficiency={:.4f}, Avg Latency(ms)={:.4f}".format(
+        "Accuracy={:.4f}, Information Leakage(Lt)={:.4f}, Detection Efficiency={:.4f}, Avg Latency(sec)={:.4f}".format(
             results["metrics"]["accuracy"],
             results["metrics"]["information_leakage"],
             results["metrics"]["detection_efficiency"],
-            results["latency_ms"]["avg"],
+            results["latency_sec"]["avg"],
         )
     )
+    print(
+        "流量分類(bytes) -> 明文/非敏感={}, 密文/敏感={}".format(
+            results["traffic_breakdown_bytes"]["plaintext_nonsensitive"],
+            results["traffic_breakdown_bytes"]["ciphertext_sensitive"],
+        )
+    )
+
+    if not args.skip_privacy_ratio_sweep:
+        run_privacy_ratio_sweep(
+            sampled_df=sampled_df,
+            privacy_ratios=privacy_ratios,
+            seed=args.seed,
+            inference_mode=effective_mode,
+            plain_model=plain_model,
+            ckks_model=ckks_model,
+            feature_sensitivity_classifier=feature_sensitivity_classifier,
+            output_dir=output_dir,
+        )
 
 
 if __name__ == "__main__":
