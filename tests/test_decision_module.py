@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import math
 
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 from decision_module.client_decision import ClientDecision, DecisionResult
 
 
 def _make_decision(threshold: float = 0.5) -> ClientDecision:
-    return ClientDecision(encryptor=PaillierEncryptor(), threshold=threshold)
+    return ClientDecision(encryptor=CKKSEncryptor(), threshold=threshold)
 
 
 # --- sigmoid ---
@@ -37,7 +37,7 @@ def test_plain_path_no_decrypt():
 # --- decrypt_if_needed (HE path) ---
 
 def test_he_path_decrypts():
-    enc = PaillierEncryptor()
+    enc = CKKSEncryptor()
     cd = ClientDecision(encryptor=enc, threshold=0.5)
 
     original = 3.14
@@ -74,7 +74,7 @@ def test_decide_plain_below_threshold():
 
 
 def test_decide_he_route_decrypts_and_decides():
-    enc = PaillierEncryptor()
+    enc = CKKSEncryptor()
     cd = ClientDecision(encryptor=enc, threshold=0.5)
 
     z_value = 1.5

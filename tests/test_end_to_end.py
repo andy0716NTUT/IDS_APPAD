@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 from adaptive_routing.system import IDSSystem, IDSSystemConfig
 from adaptive_routing.adaptive_router import RoutingConfig
 from server_module.server import TrainedModelServer
@@ -10,7 +10,7 @@ from server_module.server import TrainedModelServer
 
 @pytest.fixture(scope="module")
 def encryptor():
-    return PaillierEncryptor()
+    return CKKSEncryptor()
 
 
 @pytest.fixture(scope="module")

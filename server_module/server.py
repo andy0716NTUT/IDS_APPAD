@@ -27,7 +27,7 @@ class TrainedModelServer:
 
     Supports:
     - plaintext-only payloads  → returns ``float`` z
-    - mixed payloads with Paillier-encrypted values → returns ciphertext z_enc
+    - mixed payloads with CKKS-encrypted values → returns ciphertext z_enc
 
     The server must NOT decrypt — decryption is the client's responsibility.
     """
@@ -81,7 +81,7 @@ class TrainedModelServer:
             except Exception:
                 continue
 
-        # Encrypted part (Paillier supports scalar mul & add)
+        # Encrypted part (CKKS supports scalar mul & add)
         for k, enc_v in payload.get("encrypted", {}).items():
             w = float(self.weights.get(k, 0.0))
             term = enc_v * w
