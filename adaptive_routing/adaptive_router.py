@@ -54,7 +54,7 @@ class ServerLRStub:
     """
     Server-side LR inference stub that supports:
     - plaintext-only payloads (returns float z)
-    - mixed payloads with Paillier-encrypted values (returns ciphertext z_enc)
+    - mixed payloads with CKKS-encrypted values (returns ciphertext z_enc)
 
     Notes:
     - The server must NOT decrypt.
@@ -94,7 +94,7 @@ class ServerLRStub:
         for k, enc_v in payload.get("encrypted", {}).items():
             w = float(self.weights.get(k, 0.0))
 
-            # phe.EncryptedNumber supports multiplication by scalar and addition.
+            # CKKS ciphertext supports scalar multiplication and addition.
             term = enc_v * w
             z_enc = term if z_enc is None else (z_enc + term)
 
@@ -137,7 +137,7 @@ class AdaptiveRouter:
         if encryptor is None:
             raise ValueError(
                 "AdaptiveRouter 需要一個真實的 HE encryptor，"
-                "請在建構時傳入，例如 ckks_homomorphic_encryption.PaillierEncryptor。"
+                "請在建構時傳入，例如 ckks_homomorphic_encryption.CKKSEncryptor。"
             )
         self.encryptor = encryptor
         self.pipeline = pipeline or MixedProtectionPipeline(encryptor=self.encryptor)
@@ -242,7 +242,12 @@ class AdaptiveRouter:
         model_record = self.encoder.encode(raw_record)
 
         t0 = time.time()
-        payload = self.pipeline.protect_record(model_record, enable_he=enable_he)
+        payload = self.pipeline.protect_record(
+            model_record,
+            enable_he=enable_he,
+            raw_record=raw_record,
+            record_sensitivity=sensitivity.get("sensitivity_level"),
+        )
 
         # server infer: returns float z or ciphertext z_enc
         z = self.server.infer(payload)

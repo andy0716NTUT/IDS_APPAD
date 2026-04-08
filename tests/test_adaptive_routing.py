@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from adaptive_routing.adaptive_router import AdaptiveRouter, RoutingConfig
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 from adaptive_routing.feature_encoder import SimpleRecordEncoder
 
 
@@ -46,7 +46,7 @@ def test_encoder_uses_stable_hash():
 def test_routing_high_must_use_he():
     router = AdaptiveRouter(
         config=RoutingConfig(latency_budget_ms=1.0, network_rtt_ms=30.0, prefer_he_on_medium=False),
-        encryptor=PaillierEncryptor(),
+        encryptor=CKKSEncryptor(),
         sensitivity_clf=SensitivityStub(encryption_required=True, is_sensitive=True, level="HIGH", risk=1.0),
         encoder=SimpleRecordEncoder(),
         threshold=0.5,
@@ -59,7 +59,7 @@ def test_routing_high_must_use_he():
 def test_routing_low_prefers_plain():
     router = AdaptiveRouter(
         config=RoutingConfig(),
-        encryptor=PaillierEncryptor(),
+        encryptor=CKKSEncryptor(),
         sensitivity_clf=SensitivityStub(encryption_required=False, is_sensitive=False, level="LOW", risk=0.0),
         encoder=SimpleRecordEncoder(),
     )
@@ -74,7 +74,7 @@ def test_routing_medium_respects_latency_budget():
     # default estimates: plain ~= rtt(30)+10=40, he ~= rtt(30)+80=110
     router_plain = AdaptiveRouter(
         config=RoutingConfig(latency_budget_ms=100.0, network_rtt_ms=30.0, prefer_he_on_medium=True),
-        encryptor=PaillierEncryptor(),
+        encryptor=CKKSEncryptor(),
         sensitivity_clf=SensitivityStub(encryption_required=False, is_sensitive=True, level="MEDIUM", risk=0.5),
         encoder=SimpleRecordEncoder(),
     )
@@ -83,7 +83,7 @@ def test_routing_medium_respects_latency_budget():
 
     router_he = AdaptiveRouter(
         config=RoutingConfig(latency_budget_ms=120.0, network_rtt_ms=30.0, prefer_he_on_medium=True),
-        encryptor=PaillierEncryptor(),
+        encryptor=CKKSEncryptor(),
         sensitivity_clf=SensitivityStub(encryption_required=False, is_sensitive=True, level="MEDIUM", risk=0.5),
         encoder=SimpleRecordEncoder(),
     )
@@ -94,7 +94,7 @@ def test_routing_medium_respects_latency_budget():
 def test_process_he_route_decrypts_when_encrypted_fields_exist():
     router = AdaptiveRouter(
         config=RoutingConfig(latency_budget_ms=999.0, network_rtt_ms=30.0, prefer_he_on_medium=True),
-        encryptor=PaillierEncryptor(),
+        encryptor=CKKSEncryptor(),
         sensitivity_clf=SensitivityStub(encryption_required=True, is_sensitive=True, level="HIGH", risk=1.0),
         encoder=SimpleRecordEncoder(),
         threshold=0.5,

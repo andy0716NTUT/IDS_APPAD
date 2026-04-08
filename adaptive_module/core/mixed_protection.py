@@ -16,20 +16,31 @@ class MixedProtectionPipeline:
         # APPAD 的欄位保護模組（Week3）
         self.adaptive_module = AdaptiveModule(encryptor=encryptor)
 
-    def get_sensitive_fields(self, record: Dict[str, Any]) -> list[str]:
+    def get_sensitive_fields(
+        self,
+        record: Dict[str, Any],
+        raw_record: Dict[str, Any] | None = None,
+        record_sensitivity: str | None = None,
+    ) -> list[str]:
         """
         使用欄位敏感度 classifier，找出這筆 record 中需要 HE 的欄位名稱清單。
+
+        若提供 raw_record（原始字串值），使用內容感知分析；
+        否則 fallback 到靜態欄位名稱分析。
         """
-        return self.feature_clf.sensitive_indices(record)
+        source = raw_record if raw_record is not None else record
+        return self.feature_clf.sensitive_indices(source, record_sensitivity=record_sensitivity)
 
     def protect_record(
         self,
         record: Dict[str, Any],
         enable_he: bool = True,
+        raw_record: Dict[str, Any] | None = None,
+        record_sensitivity: str | None = None,
     ) -> Dict[str, Dict[str, Any]]:
         """
         對單一 record 做「混合保護」：
-        - 若 enable_he=True：sensitive 欄位丟到 encrypted，其餘維持在 plain
+        - 若 enable_he=True：依內容感知分析決定哪些欄位加密
         - 若 enable_he=False：全部都視為 plain（模擬關閉 HE）
 
         回傳格式與 AdaptiveModule.protect 一致：
@@ -38,7 +49,7 @@ class MixedProtectionPipeline:
             "encrypted": {...}
         }
         """
-        sensitive_idx = self.get_sensitive_fields(record)
+        sensitive_idx = self.get_sensitive_fields(record, raw_record, record_sensitivity)
         return self.adaptive_module.protect(
             x=record,
             flag=enable_he,

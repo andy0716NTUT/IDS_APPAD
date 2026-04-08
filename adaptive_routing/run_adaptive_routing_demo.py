@@ -82,17 +82,17 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     # Client holds the secret key, so encryptor lives here.
-    # 在真實系統前提下：必須使用真正的 Paillier HE，沒有就直接報錯。
+    # 在真實系統前提下：必須使用真正的 CKKS HE，沒有就直接報錯。
     try:
-        from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+        from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
     except ImportError as e:
         raise ImportError(
-            "此 demo 以真實同態加密系統為前提，必須先安裝 `phe` 並使用 PaillierEncryptor。\n"
-            "請先執行：pip install phe"
+            "此 demo 以真實同態加密系統為前提，必須先安裝 `tenseal` 並使用 CKKSEncryptor。\n"
+            "請先執行：pip install tenseal"
         ) from e
 
-    encryptor = PaillierEncryptor()
-    encryptor_name = "PaillierEncryptor(phe)"
+    encryptor = CKKSEncryptor()
+    encryptor_name = "CKKSEncryptor(tenseal)"
 
     base_dir = Path(__file__).resolve().parents[1]
     out_path = Path(args.output)

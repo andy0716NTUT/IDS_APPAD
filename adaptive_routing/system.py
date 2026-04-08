@@ -55,7 +55,7 @@ class IDSSystem:
         # 在真實系統前提下：不再自動 fallback 到 FakeEncryptor
         if encryptor is None:
             raise ValueError(
-                "IDSSystem 需要傳入一個真實的同態加密 encryptor（例如 ckks_homomorphic_encryption.PaillierEncryptor）。"
+                "IDSSystem 需要傳入一個真實的同態加密 encryptor（例如 ckks_homomorphic_encryption.CKKSEncryptor）。"
             )
 
         self.encryptor = encryptor
