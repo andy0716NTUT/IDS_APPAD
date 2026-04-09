@@ -1,3 +1,3 @@
-from server_module.server import TrainedModelServer
+from server_module.server import LRModelServer, TrainedModelServer
 
-__all__ = ["TrainedModelServer"]
+__all__ = ["LRModelServer", "TrainedModelServer"]

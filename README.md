@@ -85,11 +85,20 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
 
 ## `main.py` 執行方式
 
-`main.py` 為專案整合入口，支援：
-- 流量抽樣
-- 敏感度判斷
-- 明文推論（`plaintext`）或 CKKS 隱私推論（`ckks`）
-- 輸出預測結果與整體指標（accuracy / detection efficiency / latency）
+`main.py` 為專案整合入口，**預設會啟動前端網站流程**：
+- 啟動 `frontend/backend_api.py`
+- 啟動前端開發伺服器並開啟網站
+- 之後由網站按鈕觸發分析執行
+
+### 預設（建議）
+- `python main.py`
+  - 不會直接執行 pipeline
+  - 不會先跑 privacy ratio sweep
+
+### 需要 CLI 跑 pipeline 時
+- `python main.py --pipeline [原本 pipeline 參數]`
+- 範例：
+  - `python main.py --pipeline --inference-mode mixed --skip-privacy-ratio-sweep`
 
 ### 指令參數
 - `--dataset-path`：資料集 CSV 路徑（預設：`dataset/synthetic_web_auth_logs.csv`）

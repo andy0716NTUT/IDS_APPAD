@@ -17,14 +17,19 @@ class LogisticRegressionCKKS:
     4) 解密得到機率
     """
 
-    def __init__(self, encryptor: CKKSEncryptor | None = None) -> None:
+    def __init__(
+        self,
+        encryptor: CKKSEncryptor | None = None,
+        weights: dict[str, float] | None = None,
+        bias: float | None = None,
+    ) -> None:
         self.encryptor = encryptor or CKKSEncryptor()
-        self.weights = {
+        self.weights = weights or {
             "session_duration": 0.003,
             "failed_attempts": 0.6,
             "behavioral_score": -0.04,
         }
-        self.bias = -1.5
+        self.bias = -1.5 if bias is None else float(bias)
 
     @staticmethod
     def _sigmoid_plain(z: float) -> float:

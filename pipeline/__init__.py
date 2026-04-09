@@ -1,3 +1,4 @@
-from pipeline.end_to_end import EndToEndPipeline, PipelineConfig
-
-__all__ = ["EndToEndPipeline", "PipelineConfig"]
+__all__ = [
+	"appad_pipeline",
+	"end_to_end",
+]

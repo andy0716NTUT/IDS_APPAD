@@ -9,6 +9,7 @@ from adaptive_module.core.mixed_protection import MixedProtectionPipeline
 from decision_module.client_decision import ClientDecision
 from adaptive_routing.feature_encoder import SimpleRecordEncoder
 from adaptive_routing.interfaces import ModelServerLike, RecordEncoder, SensitivityClassifierLike
+from server_module.server import LRModelServer
 
 
 RouteName = Literal["server_plain", "server_mixed_he"]
@@ -50,61 +51,6 @@ class RoutingConfig:
     latency_weight: float = 0.01
 
 
-class ServerLRStub:
-    """
-    Server-side LR inference stub that supports:
-    - plaintext-only payloads (returns float z)
-    - mixed payloads with Paillier-encrypted values (returns ciphertext z_enc)
-
-    Notes:
-    - The server must NOT decrypt.
-    - The client will decrypt and apply threshold.
-    """
-
-    def __init__(self, weights: Dict[str, float] | None = None, bias: float = 0.0) -> None:
-        # PoC weights across fields we currently encode.
-        self.weights = weights or {
-            "session_duration": 0.003,
-            "failed_attempts": 0.60,
-            "behavioral_score": -0.04,
-            # encoded-but-sensitive fields (keep small weights for stability)
-            "user_id": 0.0002,
-            "ip_address": 0.02,
-            "location": 0.0001,
-            "timestamp": 0.01,
-            "device_type": 0.0001,
-            "login_status": 0.0001,
-        }
-        self.bias = bias
-
-    def infer(self, payload: Dict[str, Dict[str, Any]]) -> Any:
-        z_plain = float(self.bias)
-        z_enc: Any = None  # Paillier ciphertext when any encrypted fields exist
-
-        # plaintext part
-        for k, v in payload.get("plain", {}).items():
-            w = float(self.weights.get(k, 0.0))
-            try:
-                z_plain += w * float(v)
-            except Exception:
-                # if something non-numeric leaks in, ignore it in PoC
-                continue
-
-        # encrypted part
-        for k, enc_v in payload.get("encrypted", {}).items():
-            w = float(self.weights.get(k, 0.0))
-
-            # phe.EncryptedNumber supports multiplication by scalar and addition.
-            term = enc_v * w
-            z_enc = term if z_enc is None else (z_enc + term)
-
-        # if there was any encrypted term, fold plaintext constant into ciphertext
-        if z_enc is not None:
-            return z_enc + z_plain
-
-        return z_plain
-
-
 class AdaptiveRouter:
     """
     Adaptive routing between plaintext vs mixed-HE paths.
@@ -141,7 +87,7 @@ class AdaptiveRouter:
             )
         self.encryptor = encryptor
         self.pipeline = pipeline or MixedProtectionPipeline(encryptor=self.encryptor)
-        self.server = server or ServerLRStub()
+        self.server = server or LRModelServer()
         self.threshold = float(threshold)
         self.decision = ClientDecision(encryptor=self.encryptor, threshold=self.threshold)
 
