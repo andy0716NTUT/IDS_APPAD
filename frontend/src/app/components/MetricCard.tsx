@@ -19,10 +19,11 @@ interface MetricCardProps {
   status: '正常' | '警告' | '危險';
   chartData?: ChartPoint[];
   unit?: string;
+  tooltipUnit?: string;
   compact?: boolean;
 }
 
-export function MetricCard({ title, value, status, chartData, unit = '', compact = false }: MetricCardProps) {
+export function MetricCard({ title, value, status, chartData, unit = '', tooltipUnit = '', compact = false }: MetricCardProps) {
   const statusColors = {
     正常: 'bg-green-100 text-green-800',
     警告: 'bg-yellow-100 text-yellow-800',
@@ -63,7 +64,7 @@ export function MetricCard({ title, value, status, chartData, unit = '', compact
                 <YAxis tick={!compact ? { fontSize: 10, fill: '#6b7280' } : false} width={54} axisLine={!compact} />
                 {!compact && (
                   <Tooltip
-                    formatter={(val: number) => Number(val).toLocaleString()}
+                    formatter={(val: number) => `${Number(val).toLocaleString()}${tooltipUnit}`}
                     labelFormatter={(label) => `敏感比例: ${label}%`}
                   />
                 )}

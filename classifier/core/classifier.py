@@ -71,6 +71,6 @@ class SensitivityClassifier:
             "is_sensitive": level in ("MEDIUM", "HIGH"),
             "risk_score": round(risk_score, 2),
             "sensitivity_level": level,
-            "encryption_required": level == "HIGH",
+            "encryption_required": level in ("MEDIUM", "HIGH"),
             "reasons": reasons
         }

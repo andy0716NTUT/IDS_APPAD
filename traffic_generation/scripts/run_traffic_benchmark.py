@@ -38,6 +38,18 @@ def main() -> None:
     parser.add_argument("--sample-size", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--p-sensitive",
+        type=float,
+        default=None,
+        help="Sensitive sampling ratio in [0,1]. Example: 0.1 means 10% sensitive and 90% non-sensitive.",
+    )
+    parser.add_argument(
+        "--sensitive-flag-col",
+        type=str,
+        default="sensitive_needs_encryption",
+        help="Column name in dataset that marks whether a row is sensitive.",
+    )
 
     args = parser.parse_args()
 
@@ -45,6 +57,8 @@ def main() -> None:
         sample_size=args.sample_size,
         seed=args.seed,
         threshold=args.threshold,
+        p_sensitive=args.p_sensitive,
+        sensitive_flag_col=args.sensitive_flag_col,
         dataset_path=Path(args.dataset_path),
         model_path=Path(args.model_path),
         output_dir=Path(args.output_dir),
@@ -58,6 +72,12 @@ def main() -> None:
 
     print("=== 流量推論評估結果 ===")
     print(f"樣本數: {results['config']['sample_size_actual']}")
+    if results["config"].get("sampling_mode") == "ratio_stratified":
+        print(
+            "分層抽樣 - p_sensitive: "
+            f"{results['config']['requested_p_sensitive']}, "
+            f"敏感/非敏感: {results['config']['sampled_sensitive_count']}/{results['config']['sampled_nonsensitive_count']}"
+        )
     print(f"明文準確率: {plain_metrics['accuracy']}")
     print(f"敏感保護準確率: {sensitive_metrics['accuracy']}")
     print(

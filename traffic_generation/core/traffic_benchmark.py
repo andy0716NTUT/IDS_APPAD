@@ -32,6 +32,8 @@ RAW_TO_INTERNAL_COLS = {
     "Anomaly": "anomaly",
 }
 
+DEFAULT_SENSITIVE_FLAG_COL = "sensitive_needs_encryption"
+
 def _resolve_default_paths() -> tuple[Path, Path, Path]:
     root = Path(__file__).resolve().parents[2]
     dataset_path = resolve_data_dir() / "test_normalized.csv"
@@ -81,10 +83,80 @@ def _to_internal_record(row: pd.Series) -> dict[str, Any]:
     return record
 
 
+def _is_sensitive_flag(value: Any) -> bool:
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer, float, np.floating)):
+        return float(value) != 0.0
+    text = str(value).strip().lower()
+    return text in {"1", "true", "t", "yes", "y", "sensitive", "high", "medium"}
+
+
+def _sample_by_sensitive_ratio(
+    df: pd.DataFrame,
+    sample_n: int,
+    seed: int,
+    p_sensitive: float,
+    sensitive_flag_col: str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if sensitive_flag_col not in df.columns:
+        raise KeyError(
+            f"Sensitive flag column '{sensitive_flag_col}' not found in dataset. "
+            "Please provide a labeled dataset and correct column name."
+        )
+
+    if not 0.0 <= p_sensitive <= 1.0:
+        raise ValueError("p_sensitive must be between 0.0 and 1.0")
+
+    flag_series = df[sensitive_flag_col].apply(_is_sensitive_flag)
+    sensitive_df = df[flag_series]
+    nonsensitive_df = df[~flag_series]
+
+    sensitive_target = int(round(sample_n * p_sensitive))
+    nonsensitive_target = sample_n - sensitive_target
+
+    if sensitive_target > 0 and len(sensitive_df) == 0:
+        raise ValueError("No sensitive rows available in dataset for requested p_sensitive")
+    if nonsensitive_target > 0 and len(nonsensitive_df) == 0:
+        raise ValueError("No non-sensitive rows available in dataset for requested p_sensitive")
+
+    sensitive_replace = sensitive_target > len(sensitive_df)
+    nonsensitive_replace = nonsensitive_target > len(nonsensitive_df)
+
+    sampled_sensitive = (
+        sensitive_df.sample(n=sensitive_target, random_state=seed, replace=sensitive_replace)
+        if sensitive_target > 0
+        else sensitive_df.iloc[0:0]
+    )
+    sampled_nonsensitive = (
+        nonsensitive_df.sample(n=nonsensitive_target, random_state=seed + 1, replace=nonsensitive_replace)
+        if nonsensitive_target > 0
+        else nonsensitive_df.iloc[0:0]
+    )
+
+    sampled_df = pd.concat([sampled_sensitive, sampled_nonsensitive], axis=0)
+    sampled_df = sampled_df.sample(frac=1.0, random_state=seed + 2).reset_index(drop=True)
+
+    return sampled_df, {
+        "requested_p_sensitive": p_sensitive,
+        "requested_sensitive_count": sensitive_target,
+        "requested_nonsensitive_count": nonsensitive_target,
+        "sampled_sensitive_count": int(sensitive_target),
+        "sampled_nonsensitive_count": int(nonsensitive_target),
+        "sensitive_sampling_with_replacement": bool(sensitive_replace),
+        "nonsensitive_sampling_with_replacement": bool(nonsensitive_replace),
+        "sensitive_flag_col": sensitive_flag_col,
+        "source_sensitive_count": int(len(sensitive_df)),
+        "source_nonsensitive_count": int(len(nonsensitive_df)),
+    }
+
+
 def run_traffic_benchmark(
     sample_size: int = 500,
     seed: int = 42,
     threshold: float = 0.5,
+    p_sensitive: float | None = None,
+    sensitive_flag_col: str = DEFAULT_SENSITIVE_FLAG_COL,
     dataset_path: Path | None = None,
     model_path: Path | None = None,
     output_dir: Path | None = None,
@@ -107,7 +179,23 @@ def run_traffic_benchmark(
 
     df = pd.read_csv(dataset_path)
     sample_n = min(sample_size, len(df))
-    sampled_df = df.sample(n=sample_n, random_state=seed).reset_index(drop=True)
+    sampling_config: dict[str, Any] = {
+        "sampling_mode": "uniform_random",
+    }
+    if p_sensitive is None:
+        sampled_df = df.sample(n=sample_n, random_state=seed).reset_index(drop=True)
+    else:
+        sampled_df, ratio_sampling_config = _sample_by_sensitive_ratio(
+            df=df,
+            sample_n=sample_n,
+            seed=seed,
+            p_sensitive=p_sensitive,
+            sensitive_flag_col=sensitive_flag_col,
+        )
+        sampling_config = {
+            "sampling_mode": "ratio_stratified",
+            **ratio_sampling_config,
+        }
 
     if TARGET_COL not in sampled_df.columns:
         raise KeyError(f"Target column '{TARGET_COL}' not found in dataset")
@@ -185,6 +273,7 @@ def run_traffic_benchmark(
             "sample_size_actual": sample_n,
             "seed": seed,
             "threshold": threshold,
+            **sampling_config,
         },
         "plaintext": {
             "metrics": plain_metrics,

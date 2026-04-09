@@ -33,6 +33,8 @@ CSV_TO_INTERNAL = {
 DEFAULT_THRESHOLD = 0.5
 DEFAULT_PRIVACY_RATIOS = [10, 20, 30, 40, 50, 60, 70, 80, 90]
 EFFICIENCY_EPSILON = 1e-12
+FIXED_P_SENSITIVE = 0.5
+BITS_PER_KB = 1000.0
 
 
 def resolve_default_dataset() -> Path:
@@ -271,7 +273,7 @@ def run_privacy_ratio_sweep(
 
         accuracy = float(accuracy_score(y_true_arr, y_pred_arr))
         n_flows = int(len(sampled_df))
-        p_sensitive = float(np.mean(np.asarray(sensitive_traffic_flags, dtype=np.float64))) if sensitive_traffic_flags else 0.0
+        p_sensitive = float(ratio_percent) / 100.0
         unencrypted_sensitive_ratio = (
             float(np.mean(np.asarray(unencrypted_sensitive_ratios, dtype=np.float64)))
             if unencrypted_sensitive_ratios
@@ -279,10 +281,10 @@ def run_privacy_ratio_sweep(
         )
         l_flow_size = float(np.mean(np.asarray(flow_size_bits, dtype=np.float64))) if flow_size_bits else 0.0
         d_latency = float(latency_arr.mean()) if len(latency_arr) else 0.0
-        lt_information_leakage = float(n_flows * p_sensitive * l_flow_size)
+        lt_information_leakage_kb = float((n_flows * p_sensitive * l_flow_size) / BITS_PER_KB)
 
         d_latency_eff = max(d_latency, EFFICIENCY_EPSILON)
-        lt_eff = max(lt_information_leakage, EFFICIENCY_EPSILON)
+        lt_eff = max(lt_information_leakage_kb, EFFICIENCY_EPSILON)
         detection_efficiency = float(accuracy / (d_latency_eff * lt_eff))
 
         rows.append(
@@ -290,7 +292,7 @@ def run_privacy_ratio_sweep(
                 "privacy_sensitive_data_ratio": float(ratio_percent),
                 "accuracy": accuracy,
                 "latency_sec": d_latency,
-                "information_leakage": lt_information_leakage,
+                "information_leakage": lt_information_leakage_kb,
                 "unencrypted_sensitive_ratio": unencrypted_sensitive_ratio,
                 "detection_efficiency": detection_efficiency,
                 "plaintext_nonsensitive_bytes": float(traffic_breakdown_bytes["plaintext_nonsensitive"]),
@@ -330,7 +332,7 @@ def run_privacy_ratio_sweep(
     _plot_metric(
         x_values=x_values,
         y_values=sweep_df["information_leakage"].tolist(),
-        y_label="Information Leakage",
+        y_label="Information Leakage (kb)",
         output_path=plot_dir / "appad_information_leakage_vs_privacy_ratio.png",
     )
     _plot_metric(
@@ -495,7 +497,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     f1 = float(f1_score(y_true_arr, y_pred_arr, zero_division=0))
 
     n_flows = int(sample_n)
-    p_sensitive = float(np.mean(np.asarray(sensitive_traffic_flags, dtype=np.float64))) if sensitive_traffic_flags else 0.0
+    p_sensitive = FIXED_P_SENSITIVE
     unencrypted_sensitive_ratio = (
         float(np.mean(np.asarray(unencrypted_sensitive_ratios, dtype=np.float64)))
         if unencrypted_sensitive_ratios
@@ -503,10 +505,10 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     )
     l_flow_size = float(np.mean(np.asarray(flow_size_bits, dtype=np.float64))) if flow_size_bits else 0.0
     d_latency = float(latency_arr.mean()) if len(latency_arr) else 0.0
-    lt_information_leakage = float(n_flows * p_sensitive * l_flow_size)
+    lt_information_leakage_kb = float((n_flows * p_sensitive * l_flow_size) / BITS_PER_KB)
 
     d_latency_eff = max(d_latency, EFFICIENCY_EPSILON)
-    lt_eff = max(lt_information_leakage, EFFICIENCY_EPSILON)
+    lt_eff = max(lt_information_leakage_kb, EFFICIENCY_EPSILON)
     detection_efficiency = float(accuracy / (d_latency_eff * lt_eff))
 
     results = {
@@ -523,7 +525,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "metrics": {
             "accuracy": round(accuracy, 4),
             "detection_efficiency": round(detection_efficiency, 8),
-            "information_leakage": round(lt_information_leakage, 6),
+            "information_leakage": round(lt_information_leakage_kb, 6),
+            "information_leakage_unit": "kb",
             "unencrypted_sensitive_ratio": round(unencrypted_sensitive_ratio, 6),
             "precision": round(precision, 4),
             "recall": round(recall, 4),
@@ -533,9 +536,11 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "N": n_flows,
             "p": round(p_sensitive, 6),
             "l": round(l_flow_size, 4),
+            "l_unit": "bits",
             "d": round(d_latency, 6),
-            "Lt": round(lt_information_leakage, 6),
-            "definition": "detection_efficiency = accuracy / (d * Lt), Lt = N * p * l (p = sensitive traffic ratio)",
+            "Lt": round(lt_information_leakage_kb, 6),
+            "Lt_unit": "kb",
+            "definition": "detection_efficiency = accuracy / (d * Lt), Lt = (N * p * l_bits) / 1000 (p is fixed at 0.5)",
         },
         "latency_sec": {
             "avg": round(float(latency_arr.mean()), 4),
@@ -560,7 +565,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     print(f"Predictions saved to: {pred_path}")
     print(f"Metrics saved to: {metrics_path}")
     print(
-        "Accuracy={:.4f}, Information Leakage(Lt)={:.4f}, Detection Efficiency={:.4f}, Avg Latency(sec)={:.4f}".format(
+        "Accuracy={:.4f}, Information Leakage(Lt, kb)={:.4f}, Detection Efficiency={:.4f}, Avg Latency(sec)={:.4f}".format(
             results["metrics"]["accuracy"],
             results["metrics"]["information_leakage"],
             results["metrics"]["detection_efficiency"],

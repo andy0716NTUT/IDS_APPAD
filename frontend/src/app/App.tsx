@@ -115,10 +115,10 @@ function getStatus(metric: string, value: number): '正常' | '警告' | '危險
     return '危險';
   }
   if (metric === 'infoLeakage') {
-    if (value <= 0.1) {
+    if (value <= 300) {
       return '正常';
     }
-    if (value <= 0.2) {
+    if (value <= 500) {
       return '警告';
     }
     return '危險';
@@ -177,7 +177,11 @@ export default function App() {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inferenceMode: 'mixed', seed: 42 }),
+        body: JSON.stringify({
+          inferenceMode: 'mixed',
+          seed: 42,
+          runPrivacySweep: true,
+        }),
       });
 
       const payload: ApiPayload = await res.json();
@@ -201,6 +205,7 @@ export default function App() {
       setRecordIdCounter((prev: number) => prev + 1);
 
       appendLog(`[${timestamp}] 後端分析完成`);
+      appendLog(`[${timestamp}] 已重跑完整流程並重新生成隱私比例圖表`);
       appendLog(
         `[${timestamp}] 圖表已更新 - Accuracy: ${(newMetrics.accuracy * 100).toFixed(2)}%, Latency: ${newMetrics.latencySec.toFixed(4)}s`
       );
@@ -257,6 +262,7 @@ export default function App() {
                 title="準確率 (Accuracy)"
                 value={(metrics.accuracy * 100).toFixed(2)}
                 unit="%"
+                tooltipUnit="%"
                 status={getStatus('accuracy', metrics.accuracy)}
                 chartData={chartSeries.accuracy}
               />
@@ -265,6 +271,7 @@ export default function App() {
                 title="延遲 (Latency)"
                 value={metrics.latencySec.toFixed(4)}
                 unit=" sec"
+                tooltipUnit=" sec"
                 status={getStatus('latencySec', metrics.latencySec)}
                 chartData={chartSeries.latency}
               />
@@ -277,8 +284,10 @@ export default function App() {
               />
 
               <MetricCard
-                title="資訊洩漏 (Information Leakage)"
+                title="資訊洩漏 (Information Leakage, kb)"
                 value={metrics.infoLeakage.toFixed(3)}
+                unit=" kb"
+                tooltipUnit=" kb"
                 status={getStatus('infoLeakage', metrics.infoLeakage)}
                 chartData={chartSeries.infoLeakage}
               />
@@ -371,8 +380,8 @@ export default function App() {
                               </td>
                             </tr>
                             <tr>
-                              <td className="py-2 px-3">資訊洩漏</td>
-                              <td className="py-2 px-3">{record.metrics.infoLeakage.toFixed(3)}</td>
+                              <td className="py-2 px-3">資訊洩漏 (kb)</td>
+                              <td className="py-2 px-3">{record.metrics.infoLeakage.toFixed(3)} kb</td>
                               <td className="py-2 px-3">
                                 <span className={`px-2 py-1 rounded text-xs ${
                                   getStatus('infoLeakage', record.metrics.infoLeakage) === '正常'
@@ -403,8 +412,8 @@ export default function App() {
                           <MetricCard title="" value="" status="正常" chartData={record.chartSeries.detectionEfficiency} compact />
                         </div>
                         <div className="border border-gray-200 rounded p-2">
-                          <p className="text-xs text-gray-600 mb-1">資訊洩漏</p>
-                          <MetricCard title="" value="" status="正常" chartData={record.chartSeries.infoLeakage} compact />
+                          <p className="text-xs text-gray-600 mb-1">資訊洩漏 (kb)</p>
+                          <MetricCard title="" value="" status="正常" chartData={record.chartSeries.infoLeakage} tooltipUnit=" kb" compact />
                         </div>
                       </div>
                     </div>
