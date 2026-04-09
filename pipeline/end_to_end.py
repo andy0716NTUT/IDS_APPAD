@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 
 from adaptive_routing.adaptive_router import RoutingConfig
 from adaptive_routing.system import IDSSystem, IDSSystemConfig
-from ckks_homomorphic_encryption.he_encryptor import PaillierEncryptor
+from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
 from logistic_regression_model.inference.inference_tools import (
     TARGET_COL,
     resolve_data_dir,
@@ -82,7 +82,7 @@ class EndToEndPipeline:
         self.output_dir = self.config.output_dir or default_output
 
         # Build system components
-        self.encryptor = PaillierEncryptor()
+        self.encryptor = CKKSEncryptor()
         self.server = TrainedModelServer(model_path=self.model_path)
         self.system = IDSSystem(
             config=IDSSystemConfig(

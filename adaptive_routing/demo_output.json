@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-04T10:30:25.319284+00:00",
+  "generated_at": "2026-03-18T12:24:44.043828+00:00",
   "encryptor": "PaillierEncryptor(phe)",
   "config": {
     "routing": {
@@ -54,8 +54,8 @@
         "z": -1.1642059349044036,
         "prob": 0.23790388507832066,
         "is_anomaly": false,
-        "latency_ms": 0.023,
-        "latency_est_ms": 30.023
+        "latency_ms": 0.035,
+        "latency_est_ms": 30.035
       }
     },
     {
@@ -101,8 +101,8 @@
         "z": -0.6560422586928044,
         "prob": 0.3416292228050562,
         "is_anomaly": false,
-        "latency_ms": 0.015,
-        "latency_est_ms": 30.021
+        "latency_ms": 0.018,
+        "latency_est_ms": 30.03
       }
     },
     {
@@ -146,10 +146,10 @@
         },
         "decrypted": false,
         "z": 0.9262860945444211,
-        "prob": 0.7163212075232085,
+        "prob": 0.7163212075232087,
         "is_anomaly": true,
-        "latency_ms": 0.009,
-        "latency_est_ms": 30.017
+        "latency_ms": 0.011,
+        "latency_est_ms": 30.024
       }
     },
     {
@@ -195,8 +195,8 @@
         "z": -1.6595079333894152,
         "prob": 0.15982806209045344,
         "is_anomaly": false,
-        "latency_ms": 0.009,
-        "latency_est_ms": 30.015
+        "latency_ms": 0.01,
+        "latency_est_ms": 30.02
       }
     },
     {
@@ -242,8 +242,8 @@
         "z": 0.20885738200159265,
         "prob": 0.5520253645553163,
         "is_anomaly": true,
-        "latency_ms": 0.009,
-        "latency_est_ms": 30.013
+        "latency_ms": 0.01,
+        "latency_est_ms": 30.017
       }
     },
     {
@@ -290,7 +290,7 @@
         "prob": 0.32204263627487106,
         "is_anomaly": false,
         "latency_ms": 0.01,
-        "latency_est_ms": 30.012
+        "latency_est_ms": 30.015
       }
     },
     {
@@ -336,8 +336,8 @@
         "z": -0.4957342998357709,
         "prob": 0.3785436465813216,
         "is_anomaly": false,
-        "latency_ms": 0.008,
-        "latency_est_ms": 30.011
+        "latency_ms": 0.01,
+        "latency_est_ms": 30.013
       }
     },
     {
@@ -383,8 +383,8 @@
         "z": 1.2804394308558125,
         "prob": 0.7825245679925319,
         "is_anomaly": true,
-        "latency_ms": 0.008,
-        "latency_est_ms": 30.01
+        "latency_ms": 0.009,
+        "latency_est_ms": 30.012
       }
     }
   ]

@@ -156,7 +156,7 @@ class LRModelServer:
             except Exception:
                 continue
 
-        # Encrypted part (Paillier supports scalar mul & add)
+        # Encrypted part (CKKS supports scalar mul & add)
         for k, enc_v in payload.get("encrypted", {}).items():
             w = float(self.weights.get(k, 0.0))
             term = enc_v * w

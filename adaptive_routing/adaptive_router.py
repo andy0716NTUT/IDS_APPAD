@@ -50,7 +50,6 @@ class RoutingConfig:
     # scales comparable to privacy_weight.
     latency_weight: float = 0.01
 
-
 class AdaptiveRouter:
     """
     Adaptive routing between plaintext vs mixed-HE paths.
@@ -83,7 +82,7 @@ class AdaptiveRouter:
         if encryptor is None:
             raise ValueError(
                 "AdaptiveRouter 需要一個真實的 HE encryptor，"
-                "請在建構時傳入，例如 ckks_homomorphic_encryption.PaillierEncryptor。"
+                "請在建構時傳入，例如 ckks_homomorphic_encryption.CKKSEncryptor。"
             )
         self.encryptor = encryptor
         self.pipeline = pipeline or MixedProtectionPipeline(encryptor=self.encryptor)
@@ -188,7 +187,12 @@ class AdaptiveRouter:
         model_record = self.encoder.encode(raw_record)
 
         t0 = time.time()
-        payload = self.pipeline.protect_record(model_record, enable_he=enable_he)
+        payload = self.pipeline.protect_record(
+            model_record,
+            enable_he=enable_he,
+            raw_record=raw_record,
+            record_sensitivity=sensitivity.get("sensitivity_level"),
+        )
 
         # server infer: returns float z or ciphertext z_enc
         z = self.server.infer(payload)
