@@ -135,8 +135,13 @@ class LRModelServer:
         self,
         record: Dict[str, Any],
         sensitive_fields: set[str] | None = None,
-    ) -> tuple[float, float, list[str]]:
-        return self.ckks_model.predict_proba(record=record, sensitive_fields=sensitive_fields)
+        capture_encrypted_payload: bool = False,
+    ) -> tuple[float, float, list[str]] | tuple[float, float, list[str], dict[str, Any]]:
+        return self.ckks_model.predict_proba(
+            record=record,
+            sensitive_fields=sensitive_fields,
+            capture_encrypted_payload=capture_encrypted_payload,
+        )
 
     def infer(self, payload: Dict[str, Dict[str, Any]]) -> Any:
         """

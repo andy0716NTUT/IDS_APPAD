@@ -57,7 +57,8 @@ class LogisticRegressionCKKS:
         self,
         record: dict[str, Any],
         sensitive_fields: set[str] | None = None,
-    ) -> tuple[float, float, list[str]]:
+        capture_encrypted_payload: bool = False,
+    ) -> tuple[float, float, list[str]] | tuple[float, float, list[str], dict[str, Any]]:
         """
         回傳 (probability, z_plain_for_logging, encrypted_feature_list)。
         """
@@ -94,4 +95,7 @@ class LogisticRegressionCKKS:
             prob = self._sigmoid_plain(z_value)
 
         prob = max(0.0, min(1.0, prob))
+        if capture_encrypted_payload:
+            return round(prob, 4), float(z_plain_part), encrypted_feature_list, encrypted_sensitive_values
+
         return round(prob, 4), float(z_plain_part), encrypted_feature_list
