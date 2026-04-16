@@ -16,6 +16,12 @@ from classifier.core.feature_sensitivity import FeatureSensitivityClassifier
 from logistic_regression_model.inference.inference_tools import resolve_data_dir, resolve_model_path
 from server_module.server import LRModelServer
 
+# Lazy imports for remote mode (avoid hard dependency on requests)
+# from adaptive_module.core.adaptive_module import AdaptiveModule
+# from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
+# from decision_module.client_decision import ClientDecision
+# from server_module.remote_server import RemoteLRModelServer
+
 
 CSV_TO_INTERNAL = {
     "User ID": "user_id",
@@ -85,6 +91,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--auto-train-if-missing",
         action="store_true",
         help="Automatically run LR training script if model file is missing.",
+    )
+    parser.add_argument(
+        "--server-url",
+        type=str,
+        default=None,
+        help="Remote inference server URL (e.g. http://127.0.0.1:5001). "
+             "When set, inference is forwarded over HTTP instead of running locally.",
     )
     return parser
 
@@ -199,9 +212,11 @@ def run_privacy_ratio_sweep(
     privacy_ratios: list[int],
     seed: int,
     inference_mode: str,
-    server: LRModelServer,
+    server: Any,
     feature_sensitivity_classifier: FeatureSensitivityClassifier,
     output_dir: Path,
+    *,
+    remote_helpers: dict[str, Any] | None = None,
 ) -> None:
     rows: list[dict[str, float]] = []
 
@@ -229,7 +244,24 @@ def run_privacy_ratio_sweep(
             sensitive_fields = set(feature_sensitivity_classifier.sensitive_indices(record)) if is_sensitive_traffic else set()
 
             start = time.perf_counter()
-            if inference_mode == "ckks":
+            if remote_helpers is not None:
+                # Remote mode: encode → encrypt → remote infer → decrypt
+                rh = remote_helpers
+                enable_he = (
+                    inference_mode == "ckks"
+                    or (inference_mode == "mixed" and is_sensitive_traffic)
+                )
+                encoded = rh["encoder"].encode(record)
+                payload = rh["adaptive_module"].protect(
+                    x={k: float(v) for k, v in encoded.items() if k != "anomaly"},
+                    flag=enable_he,
+                    sensitive_idx=list(sensitive_fields),
+                )
+                z = server.infer(payload)
+                decision = rh["client_decision"].decide(z, payload, enable_he)
+                prob = decision.prob
+                encrypted_feature_list = sorted(payload.get("encrypted", {}).keys())
+            elif inference_mode == "ckks":
                 prob, _, encrypted_feature_list = server.predict_proba_ckks(record=record, sensitive_fields=sensitive_fields)
             elif inference_mode == "mixed":
                 if is_sensitive_traffic:
@@ -368,10 +400,28 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
-    server = LRModelServer(
-        model_path=model_path,
-        auto_train_if_missing=args.auto_train_if_missing,
-    )
+    remote_mode = bool(getattr(args, "server_url", None))
+
+    if remote_mode:
+        from adaptive_module.core.adaptive_module import AdaptiveModule
+        from adaptive_routing.feature_encoder import SimpleRecordEncoder
+        from ckks_homomorphic_encryption.he_encryptor import CKKSEncryptor
+        from decision_module.client_decision import ClientDecision
+        from server_module.remote_server import RemoteLRModelServer
+
+        encryptor = CKKSEncryptor()
+        adaptive_module = AdaptiveModule(encryptor=encryptor)
+        client_decision = ClientDecision(encryptor=encryptor, threshold=DEFAULT_THRESHOLD)
+        record_encoder = SimpleRecordEncoder()
+        server = RemoteLRModelServer(
+            base_url=args.server_url,
+            ckks_context=encryptor.context,
+        )
+    else:
+        server = LRModelServer(
+            model_path=model_path,
+            auto_train_if_missing=args.auto_train_if_missing,
+        )
 
     df = pd.read_csv(dataset_path)
     if "Anomaly" not in df.columns:
@@ -385,7 +435,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     privacy_ratios = parse_ratio_list(args.privacy_ratios)
 
     effective_mode = args.inference_mode
-    if effective_mode in {"ckks", "mixed"}:
+    if not remote_mode and effective_mode in {"ckks", "mixed"}:
         try:
             _ = server.ckks_model
         except Exception as exc:
@@ -414,7 +464,29 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         sensitivity = classifier.classify(record)
         sensitive_fields = set(feature_sensitivity_classifier.sensitive_indices(record))
 
-        if effective_mode == "ckks":
+        if remote_mode:
+            # Remote mode: encode → encrypt locally → infer remotely → decrypt locally
+            enable_he = (
+                effective_mode == "ckks"
+                or (effective_mode == "mixed" and bool(sensitivity["encryption_required"]))
+            )
+            encoded = record_encoder.encode(record)
+            payload = adaptive_module.protect(
+                x={k: float(v) for k, v in encoded.items() if k != "anomaly"},
+                flag=enable_he,
+                sensitive_idx=list(sensitive_fields),
+            )
+            z = server.infer(payload)
+            decision = client_decision.decide(z, payload, enable_he)
+            prob = decision.prob
+            encrypted_feature_list = sorted(payload.get("encrypted", {}).keys())
+            if effective_mode == "ckks":
+                detection_path = "ckks_privacy_inference"
+            elif enable_he:
+                detection_path = "mixed_privacy_inference"
+            else:
+                detection_path = "plaintext_inference"
+        elif effective_mode == "ckks":
             prob, _, encrypted_feature_list = server.predict_proba_ckks(
                 record=record,
                 sensitive_fields=sensitive_fields,
@@ -580,6 +652,13 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     if not args.skip_privacy_ratio_sweep:
+        rh = None
+        if remote_mode:
+            rh = {
+                "encoder": record_encoder,
+                "adaptive_module": adaptive_module,
+                "client_decision": client_decision,
+            }
         run_privacy_ratio_sweep(
             sampled_df=sampled_df,
             privacy_ratios=privacy_ratios,
@@ -588,6 +667,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             server=server,
             feature_sensitivity_classifier=feature_sensitivity_classifier,
             output_dir=output_dir,
+            remote_helpers=rh,
         )
 
     return results

@@ -23,6 +23,7 @@ class IDSSystemConfig:
 
     routing: RoutingConfig = field(default_factory=RoutingConfig)
     decision_threshold: float = 0.5
+    server_url: str | None = None  # if set, use remote inference server
 
 
 class IDSSystem:
@@ -61,6 +62,15 @@ class IDSSystem:
         self.encryptor = encryptor
         self.encoder = encoder or SimpleRecordEncoder()
         self.pipeline = pipeline or MixedProtectionPipeline(encryptor=self.encryptor)
+
+        # Auto-create remote server when server_url is provided
+        if server is None and self.config.server_url:
+            from server_module.remote_server import RemoteLRModelServer
+
+            server = RemoteLRModelServer(
+                base_url=self.config.server_url,
+                ckks_context=self.encryptor.context,
+            )
 
         # Router is the orchestrator for routing + privacy + inference + client decision
         self.router = AdaptiveRouter(

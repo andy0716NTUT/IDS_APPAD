@@ -37,7 +37,7 @@ def _run_web_stack() -> int:
     try:
         # Let backend bind port before opening web UI.
         time.sleep(1.0)
-        frontend_proc = subprocess.Popen(frontend_cmd, cwd=str(FRONTEND_DIR))
+        frontend_proc = subprocess.Popen(frontend_cmd, cwd=str(FRONTEND_DIR), shell=True)
 
         frontend_code = frontend_proc.wait()
         return int(frontend_code)
