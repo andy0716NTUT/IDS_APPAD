@@ -22,6 +22,9 @@ MAX_LISTED_CIPHERTEXT_FILES = 200
 DEFAULT_HEX_PAGE_BYTES = 512
 MAX_PREVIEW_ROWS_HARD_CAP = 2000
 
+# Remote inference server URL (set via --server-url CLI flag or INFERENCE_SERVER_URL env var)
+INFERENCE_SERVER_URL: str | None = None
+
 
 def _safe_output_file(path_text: str) -> Path:
     candidate = (ROOT / path_text).resolve()
@@ -215,6 +218,15 @@ def health() -> Any:
     return jsonify({"ok": True, "build": API_BUILD})
 
 
+@app.get("/api/server-info")
+def server_info() -> Any:
+    """Return the current inference server configuration."""
+    return jsonify({
+        "serverUrl": INFERENCE_SERVER_URL,
+        "mode": "remote" if INFERENCE_SERVER_URL else "local",
+    })
+
+
 @app.get("/api/results")
 def results() -> Any:
     mode = request.args.get("mode", "mixed")
@@ -244,6 +256,9 @@ def run_main() -> Any:
             }
         ), 400
 
+    # Allow per-request server-url override from frontend, fall back to global setting
+    server_url = str(body.get("serverUrl", "")).strip() or INFERENCE_SERVER_URL
+
     cmd = [
         sys.executable,
         str(MAIN_PATH),
@@ -264,6 +279,9 @@ def run_main() -> Any:
 
     if effective_dataset_path:
         cmd.extend(["--dataset-path", effective_dataset_path])
+
+    if server_url:
+        cmd += ["--server-url", server_url]
 
     if not run_sweep:
         cmd.append("--skip-privacy-ratio-sweep")
@@ -352,4 +370,22 @@ def ciphertext_hex() -> Any:
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=False)
+    import argparse as _ap
+
+    _parser = _ap.ArgumentParser(description="IDS frontend backend API")
+    _parser.add_argument("--port", type=int, default=8000)
+    _parser.add_argument("--host", default="127.0.0.1")
+    _parser.add_argument(
+        "--server-url",
+        default=os.environ.get("INFERENCE_SERVER_URL"),
+        help="Remote inference server URL (e.g. http://lacedore.org:6789)",
+    )
+    _args = _parser.parse_args()
+
+    if _args.server_url:
+        INFERENCE_SERVER_URL = _args.server_url
+        print(f"Remote inference server: {INFERENCE_SERVER_URL}")
+    else:
+        print("Running in local inference mode")
+
+    app.run(host=_args.host, port=_args.port, debug=False)

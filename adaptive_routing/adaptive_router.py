@@ -186,7 +186,7 @@ class AdaptiveRouter:
         # encode to numeric to ensure HE encryptor can run on all sensitive fields
         model_record = self.encoder.encode(raw_record)
 
-        t0 = time.time()
+        t0 = time.perf_counter()
         payload = self.pipeline.protect_record(
             model_record,
             enable_he=enable_he,
@@ -200,7 +200,7 @@ class AdaptiveRouter:
         # client-side decision: decrypt (if needed) -> sigmoid -> threshold
         decision = self.decision.decide(z, payload, enable_he)
 
-        elapsed_ms = (time.time() - t0) * 1000.0
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
         if enable_he:
             self._ema_he_ms = self._ema_update(self._ema_he_ms, elapsed_ms)
         else:
