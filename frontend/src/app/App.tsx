@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MetricCard } from './components/MetricCard';
-import { Play, History, BarChart3, GitCompareArrows, Server, Shield, Zap } from 'lucide-react';
+import { Play, History, BarChart3, GitCompareArrows, Server, Shield, Zap, Eye, Lock, Unlock, ArrowRight, CheckCircle, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -72,6 +72,27 @@ interface ApiPayload {
   };
   stdout?: string;
   error?: string;
+}
+
+interface DemoStep {
+  id: number;
+  name: string;
+  description: string;
+  data: Record<string, any>;
+  duration_ms: number;
+}
+
+interface DemoResult {
+  steps: DemoStep[];
+  summary: {
+    mode: string;
+    total_ms: number;
+    enable_he: boolean;
+    sensitivity_level: string;
+    is_anomaly: boolean;
+    probability: number;
+    inference_location: string;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,6 +206,13 @@ export default function App() {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [serverMode, setServerMode] = useState<string>('local');
 
+  /* -- Demo visualization -- */
+  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
+  const [isDemoRunning, setIsDemoRunning] = useState(false);
+  const [demoMode, setDemoMode] = useState<string>('mixed');
+  const [activeStep, setActiveStep] = useState<number>(0);
+  const [animating, setAnimating] = useState(false);
+
   const appendLog = (line: string) => setLogs(prev => [...prev.slice(-14), line]);
   const ts = () => new Date().toLocaleString('zh-TW', {
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -287,6 +315,34 @@ export default function App() {
     appendLog(`[${ts()}] 三模式比較完成`);
   };
 
+  /* ---- Demo: single-record visualization ---- */
+  const handleDemo = async () => {
+    setIsDemoRunning(true);
+    setDemoResult(null);
+    setActiveStep(0);
+    setAnimating(true);
+    try {
+      const res = await fetch('/api/demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inferenceMode: demoMode, seed: Math.floor(Math.random() * 10000) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Demo failed');
+      setDemoResult(data);
+      // Animate steps one by one
+      for (let i = 0; i < data.steps.length; i++) {
+        await new Promise(r => setTimeout(r, 600));
+        setActiveStep(i + 1);
+      }
+    } catch (err) {
+      appendLog(`[${ts()}] Demo 失敗: ${err instanceof Error ? err.message : '未知錯誤'}`);
+    } finally {
+      setIsDemoRunning(false);
+      setAnimating(false);
+    }
+  };
+
   /* ---- Derived data for comparison charts ---- */
   const comparisonBarData = Object.keys(compareResults).length > 0 ? ['plaintext', 'mixed', 'ckks']
     .filter(m => compareResults[m])
@@ -351,6 +407,9 @@ export default function App() {
           <TabsList className="mb-4">
             <TabsTrigger value="dashboard">
               <Zap className="w-4 h-4 mr-1" /> 儀表板
+            </TabsTrigger>
+            <TabsTrigger value="demo">
+              <Eye className="w-4 h-4 mr-1" /> 加密流程
             </TabsTrigger>
             <TabsTrigger value="compare">
               <GitCompareArrows className="w-4 h-4 mr-1" /> 模式比較
@@ -452,6 +511,282 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          {/* ================================================================ */}
+          {/*  Demo / Encryption Flow Tab                                       */}
+          {/* ================================================================ */}
+          <TabsContent value="demo">
+            {/* Control bar */}
+            <div className="bg-white border border-gray-200 rounded p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-base font-medium text-gray-900 flex items-center gap-2">
+                  <Eye className="w-5 h-5" /> 即時加密流程視覺化
+                </h2>
+                <div className="flex items-center gap-3">
+                  <select value={demoMode} onChange={e => setDemoMode(e.target.value)}
+                    className="border border-gray-300 rounded px-3 py-1.5 text-sm bg-white">
+                    <option value="plaintext">Plaintext</option>
+                    <option value="mixed">Mixed</option>
+                    <option value="ckks">CKKS</option>
+                  </select>
+                  <button onClick={handleDemo} disabled={isDemoRunning}
+                    className="px-4 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm font-medium">
+                    {isDemoRunning ? <><Loader2 className="w-4 h-4 animate-spin" /> 處理中...</> : <><Play className="w-4 h-4" /> 執行 Demo</>}
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-gray-500">隨機取一筆資料，完整展示 Client 加密 → Server 推論 → Client 解密決策的每個步驟。</p>
+            </div>
+
+            {demoResult ? (
+              <>
+                {/* Summary banner */}
+                <div className={`rounded p-4 mb-6 flex items-center justify-between ${
+                  demoResult.summary.is_anomaly ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {demoResult.summary.is_anomaly
+                      ? <AlertTriangle className="w-6 h-6 text-red-600" />
+                      : <ShieldCheck className="w-6 h-6 text-green-600" />}
+                    <div>
+                      <div className={`text-lg font-semibold ${demoResult.summary.is_anomaly ? 'text-red-800' : 'text-green-800'}`}>
+                        判定結果: {demoResult.summary.is_anomaly ? '異常' : '正常'}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        機率: {(demoResult.summary.probability * 100).toFixed(2)}% | 模式: {MODE_LABELS[demoResult.summary.mode]} |
+                        敏感度: {demoResult.summary.sensitivity_level} |
+                        耗時: {demoResult.summary.total_ms.toFixed(1)}ms |
+                        推論: {demoResult.summary.inference_location}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step-by-step flow */}
+                <div className="space-y-0">
+                  {demoResult.steps.map((step, idx) => {
+                    const visible = activeStep > idx || !animating;
+                    const stepIcons = [Shield, Eye, Lock, Lock, Server, Unlock];
+                    const stepColors = ['blue', 'amber', 'purple', 'purple', 'indigo', 'green'];
+                    const Icon = stepIcons[idx] || Shield;
+                    const color = stepColors[idx] || 'gray';
+
+                    return (
+                      <div key={step.id}>
+                        {/* Arrow connector */}
+                        {idx > 0 && (
+                          <div className="flex justify-center py-1">
+                            <ArrowRight className={`w-5 h-5 rotate-90 transition-all duration-300 ${visible ? `text-${color}-400` : 'text-gray-200'}`} />
+                          </div>
+                        )}
+                        <div className={`bg-white border rounded p-4 transition-all duration-500 ${
+                          visible ? 'border-gray-300 opacity-100 translate-y-0' : 'border-gray-100 opacity-30 translate-y-2'
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                              color === 'blue' ? 'bg-blue-100 text-blue-600' :
+                              color === 'amber' ? 'bg-amber-100 text-amber-600' :
+                              color === 'purple' ? 'bg-purple-100 text-purple-600' :
+                              color === 'indigo' ? 'bg-indigo-100 text-indigo-600' :
+                              'bg-green-100 text-green-600'
+                            }`}>
+                              <Icon className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <h3 className="font-medium text-gray-900">Step {step.id}: {step.name}</h3>
+                                {step.duration_ms > 0 && (
+                                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{step.duration_ms.toFixed(1)} ms</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-600 mb-3">{step.description}</p>
+
+                              {/* Step 1: Original data table */}
+                              {step.id === 1 && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead><tr className="bg-gray-50">
+                                      {Object.keys(step.data).map(k => <th key={k} className="py-1.5 px-2 text-left font-medium text-gray-600 border border-gray-200">{k}</th>)}
+                                    </tr></thead>
+                                    <tbody><tr>
+                                      {Object.entries(step.data).map(([k, v]) => (
+                                        <td key={k} className="py-1.5 px-2 border border-gray-200 font-mono">{typeof v === 'number' ? Number(v).toFixed(4) : String(v)}</td>
+                                      ))}
+                                    </tr></tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              {/* Step 2: Sensitivity */}
+                              {step.id === 2 && (
+                                <div className="flex flex-wrap gap-2">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                    step.data.sensitivity_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                                    step.data.sensitivity_level === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {step.data.sensitivity_level}
+                                  </span>
+                                  <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                    風險: {step.data.risk_score}
+                                  </span>
+                                  {step.data.encryption_required && (
+                                    <span className="px-3 py-1 rounded-full text-xs bg-purple-100 text-purple-800 flex items-center gap-1">
+                                      <Lock className="w-3 h-3" /> 需加密
+                                    </span>
+                                  )}
+                                  {(step.data.reasons as string[]).map((r: string, i: number) => (
+                                    <span key={i} className="px-3 py-1 rounded-full text-xs bg-blue-50 text-blue-700">{r}</span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Step 3: Field encryption decision — before/after comparison */}
+                              {step.id === 3 && step.data.field_status && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead><tr className="bg-gray-50">
+                                      <th className="py-1.5 px-3 text-left font-medium text-gray-600 border border-gray-200">欄位名稱</th>
+                                      <th className="py-1.5 px-3 text-left font-medium text-gray-600 border border-gray-200">狀態</th>
+                                    </tr></thead>
+                                    <tbody>
+                                      {Object.entries(step.data.field_status as Record<string, string>).map(([field, status]) => (
+                                        <tr key={field} className={
+                                          status === 'encrypted' ? 'bg-purple-50' :
+                                          status === 'sensitive_not_encrypted' ? 'bg-amber-50' : ''
+                                        }>
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono">{field}</td>
+                                          <td className="py-1.5 px-3 border border-gray-200">
+                                            {status === 'encrypted'
+                                              ? <span className="inline-flex items-center gap-1 text-purple-700"><Lock className="w-3 h-3" /> 已加密</span>
+                                              : status === 'sensitive_not_encrypted'
+                                              ? <span className="inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="w-3 h-3" /> 敏感但未加密</span>
+                                              : <span className="inline-flex items-center gap-1 text-green-700"><Unlock className="w-3 h-3" /> 明文</span>}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              {/* Step 4: Before/after encryption comparison */}
+                              {step.id === 4 && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead><tr className="bg-gray-50">
+                                      <th className="py-1.5 px-3 text-left font-medium text-gray-600 border border-gray-200">欄位</th>
+                                      <th className="py-1.5 px-3 text-left font-medium text-gray-600 border border-gray-200">加密前 (原始值)</th>
+                                      <th className="py-1.5 px-3 text-left font-medium text-gray-600 border border-gray-200">加密後 (傳輸值)</th>
+                                    </tr></thead>
+                                    <tbody>
+                                      {(step.data.plain_fields as string[]).map((f: string) => (
+                                        <tr key={f}>
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono font-medium">{f}</td>
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono text-gray-700">
+                                            {step.data.plain_values?.[f] ?? '—'}
+                                          </td>
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono text-gray-700">
+                                            <span className="inline-flex items-center gap-1 text-green-600">
+                                              <Unlock className="w-3 h-3" /> {step.data.plain_values?.[f] ?? '—'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {(step.data.encrypted_fields as string[]).map((f: string) => {
+                                        const preview = step.data.encrypted_preview?.[f];
+                                        const origVal = step.data.original_values?.[f];
+                                        return (
+                                        <tr key={f} className="bg-purple-50">
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono font-medium">{f}</td>
+                                          <td className="py-1.5 px-3 border border-gray-200 font-mono text-gray-700">
+                                            {origVal != null ? Number(origVal).toFixed(4) : (
+                                              demoResult.steps[0]?.data?.[f] != null
+                                                ? String(demoResult.steps[0].data[f])
+                                                : '—'
+                                            )}
+                                          </td>
+                                          <td className="py-1.5 px-3 border border-gray-200">
+                                            <div className="space-y-1">
+                                              <span className="inline-flex items-center gap-1 text-purple-700 text-xs">
+                                                <Lock className="w-3 h-3" /> CKKS 密文
+                                                {preview?.size_bytes && (
+                                                  <span className="text-gray-400 ml-1">({(preview.size_bytes / 1024).toFixed(1)} KB)</span>
+                                                )}
+                                              </span>
+                                              {preview?.base64_preview && (
+                                                <code className="block bg-purple-100 text-purple-900 px-2 py-1 rounded text-[9px] leading-tight font-mono break-all max-w-xs">
+                                                  {preview.base64_preview}
+                                                </code>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                  <div className="mt-2 text-xs text-gray-400 flex items-center gap-1">
+                                    <Lock className="w-3 h-3" /> 紫色列 = CKKS 同態加密（Server 僅能做密文運算，無法解密）
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Step 5: Server inference */}
+                              {step.id === 5 && (
+                                <div className="flex flex-wrap gap-2">
+                                  <span className="px-3 py-1 rounded-full text-xs bg-indigo-100 text-indigo-800 flex items-center gap-1">
+                                    <Server className="w-3 h-3" /> {step.data.inference_location}
+                                  </span>
+                                  <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">{step.data.method}</span>
+                                  <p className="w-full text-xs text-gray-500 mt-1">{step.data.note}</p>
+                                </div>
+                              )}
+
+                              {/* Step 6: Decision */}
+                              {step.id === 6 && (
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap gap-2">
+                                    {step.data.decrypted && (
+                                      <span className="px-3 py-1 rounded-full text-xs bg-green-100 text-green-800 flex items-center gap-1">
+                                        <Unlock className="w-3 h-3" /> 已解密 (Client 私鑰)
+                                      </span>
+                                    )}
+                                    <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                      z = {step.data.z_plain?.toFixed(4)}
+                                    </span>
+                                    <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                      sigmoid(z) = {(step.data.probability * 100).toFixed(2)}%
+                                    </span>
+                                    <span className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                                      閾值 = {step.data.threshold * 100}%
+                                    </span>
+                                  </div>
+                                  <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
+                                    step.data.is_anomaly ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {step.data.is_anomaly
+                                      ? <><AlertTriangle className="w-4 h-4" /> {step.data.probability.toFixed(4)} &gt; {step.data.threshold} → 判定為異常</>
+                                      : <><CheckCircle className="w-4 h-4" /> {step.data.probability.toFixed(4)} &le; {step.data.threshold} → 判定為正常</>}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded p-12 text-center text-gray-400">
+                <Eye className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p className="text-lg">點擊「執行 Demo」查看加密流程</p>
+                <p className="text-sm mt-1">將隨機選取一筆資料，展示完整的加密 → 推論 → 解密流程</p>
+              </div>
+            )}
           </TabsContent>
 
           {/* ================================================================ */}
