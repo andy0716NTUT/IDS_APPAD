@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import time
 from pathlib import Path
@@ -36,11 +37,20 @@ CSV_TO_INTERNAL = {
     "Anomaly": "anomaly",
 }
 
+MODEL_FEATURE_COLS = ["User ID", "Session Duration", "Failed Attempts", "Behavioral Score"]
+
 DEFAULT_THRESHOLD = 0.5
 DEFAULT_PRIVACY_RATIOS = [10, 20, 30, 40, 50, 60, 70, 80, 90]
 EFFICIENCY_EPSILON = 1e-12
 FIXED_P_SENSITIVE = 0.5
 BITS_PER_KB = 1000.0
+PRE_SENSITIVE_FLAG_COLS = [
+    "sensitive_needs_encryption",
+    "pre_is_sensitive",
+    "is_sensitive_pre",
+]
+LABEL_LIKE_COLS = {"anomaly", "label", "target", "y", "class"}
+DEFAULT_PRE_SENSITIVE_SIDECAR = Path(__file__).resolve().parents[1] / "dataset" / "synthetic_web_auth_logs_sensitive_flag.csv"
 
 
 def resolve_default_dataset() -> Path:
@@ -93,6 +103,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Automatically run LR training script if model file is missing.",
     )
     parser.add_argument(
+        "--allow-unscaled-dataset",
+        action="store_true",
+        help=(
+            "Bypass normalized feature consistency check. "
+            "Use only when your model is trained on the same unscaled/raw feature distribution."
+        ),
+    )
+    parser.add_argument(
         "--server-url",
         type=str,
         default=None,
@@ -140,6 +158,95 @@ def calc_flow_size_bits(record: dict[str, Any]) -> int:
     return int(total_bytes * 8)
 
 
+def _to_pre_sensitive_label(value: Any) -> str:
+    if isinstance(value, (bool, np.bool_)):
+        return "敏感" if bool(value) else "非敏感"
+    if isinstance(value, (int, np.integer, float, np.floating)):
+        return "敏感" if float(value) != 0.0 else "非敏感"
+    text = str(value).strip().lower()
+    if text in {"1", "true", "t", "yes", "y", "sensitive", "high", "medium"}:
+        return "敏感"
+    if text in {"0", "false", "f", "no", "n", "nonsensitive", "non-sensitive", "low"}:
+        return "非敏感"
+    return "未知"
+
+
+def get_pre_sensitive_label(row: pd.Series) -> str:
+    for col in PRE_SENSITIVE_FLAG_COLS:
+        if col in row.index:
+            return _to_pre_sensitive_label(row[col])
+
+    # Fallback: some datasets keep pre-sensitive flag in the last column.
+    if len(row.index) > 0:
+        last_col = str(row.index[-1])
+        last_col_lower = last_col.strip().lower()
+        if (
+            "sensitive" in last_col_lower
+            or "privacy" in last_col_lower
+            or "encrypt" in last_col_lower
+            or last_col_lower not in LABEL_LIKE_COLS
+        ):
+            candidate = _to_pre_sensitive_label(row[last_col])
+            if candidate != "未知":
+                return candidate
+    return "未知"
+
+
+def check_feature_scale_consistency(df: pd.DataFrame, feature_cols: list[str]) -> tuple[bool, dict[str, dict[str, float]]]:
+    """Check whether inference features look normalized to [0, 1]."""
+    details: dict[str, dict[str, float]] = {}
+    inconsistent = False
+
+    for col in feature_cols:
+        if col not in df.columns:
+            inconsistent = True
+            details[col] = {
+                "missing": 1.0,
+                "min": float("nan"),
+                "max": float("nan"),
+                "outside_ratio": 1.0,
+            }
+            continue
+
+        numeric = pd.to_numeric(df[col], errors="coerce")
+        valid = numeric.dropna()
+        if valid.empty:
+            inconsistent = True
+            details[col] = {
+                "missing": 0.0,
+                "min": float("nan"),
+                "max": float("nan"),
+                "outside_ratio": 1.0,
+            }
+            continue
+
+        min_v = float(valid.min())
+        max_v = float(valid.max())
+        outside = ((valid < -1e-6) | (valid > 1.000001)).sum()
+        outside_ratio = float(outside) / float(len(valid))
+
+        details[col] = {
+            "missing": 0.0,
+            "min": min_v,
+            "max": max_v,
+            "outside_ratio": outside_ratio,
+        }
+
+        if min_v < -1e-3 or max_v > 1.001 or outside_ratio > 0.01:
+            inconsistent = True
+
+    return (not inconsistent), details
+
+
+def infer_sidecar_label_column(sidecar_df: pd.DataFrame) -> str | None:
+    for col in PRE_SENSITIVE_FLAG_COLS:
+        if col in sidecar_df.columns:
+            return col
+    if len(sidecar_df.columns) == 0:
+        return None
+    return str(sidecar_df.columns[-1])
+
+
 def calc_traffic_breakdown_bytes(
     record: dict[str, Any],
     sensitive_fields: set[str],
@@ -157,6 +264,26 @@ def calc_traffic_breakdown_bytes(
         "plaintext_nonsensitive": int(sum(len(str(record[k]).encode("utf-8")) for k in plaintext_nonsensitive_fields)),
         "ciphertext_sensitive": int(sum(len(str(record[k]).encode("utf-8")) for k in ciphertext_sensitive_fields)),
     }
+
+
+def _safe_name(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", text)
+
+
+def persist_raw_ciphertext(value: Any, file_path: Path) -> int:
+    """Persist raw CKKS serialized bytes without extra encoding transform."""
+    serialize = getattr(value, "serialize", None)
+    if not callable(serialize):
+        raise TypeError("Ciphertext object does not support serialize()")
+
+    raw = serialize()
+    if not isinstance(raw, (bytes, bytearray)):
+        raise TypeError("Serialized ciphertext is not bytes")
+
+    payload = bytes(raw)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(payload)
+    return int(len(payload))
 
 
 def _plot_metric(
@@ -427,8 +554,36 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     if "Anomaly" not in df.columns:
         raise KeyError("Dataset must include 'Anomaly' column for metric calculation")
 
+    feature_scale_ok, feature_scale_stats = check_feature_scale_consistency(df, MODEL_FEATURE_COLS)
+    if not feature_scale_ok and not args.allow_unscaled_dataset:
+        raise ValueError(
+            "Feature scale consistency check failed: model expects normalized features in [0,1]. "
+            f"Dataset appears unscaled or incompatible: {dataset_path}. "
+            "Use normalized dataset (e.g. data_preprocessing/output/normalize/test_normalized.csv) "
+            "or pass --allow-unscaled-dataset to override intentionally. "
+            f"stats={feature_scale_stats}"
+        )
+
     sample_n = min(args.sample_size, len(df))
-    sampled_df = df.sample(n=sample_n, random_state=args.seed).reset_index(drop=True)
+    sampled_with_source_idx = df.sample(n=sample_n, random_state=args.seed)
+    source_row_idx = sampled_with_source_idx.index.to_numpy(dtype=np.int64)
+    sampled_df = sampled_with_source_idx.reset_index(drop=True)
+
+    sampled_plain_df = sampled_df.copy()
+    sampled_plain_df.insert(0, "sample_idx", np.arange(sample_n, dtype=np.int64))
+    sampled_plain_df.insert(1, "source_row_idx", source_row_idx)
+    sampled_plain_df["pre_sensitive_label"] = sampled_plain_df.apply(get_pre_sensitive_label, axis=1)
+
+    if (sampled_plain_df["pre_sensitive_label"] == "未知").all() and DEFAULT_PRE_SENSITIVE_SIDECAR.exists():
+        try:
+            sidecar_df = pd.read_csv(DEFAULT_PRE_SENSITIVE_SIDECAR)
+            sidecar_col = infer_sidecar_label_column(sidecar_df)
+            if sidecar_col and len(sidecar_df) >= len(df):
+                sampled_plain_df["pre_sensitive_label"] = sampled_plain_df["source_row_idx"].apply(
+                    lambda i: _to_pre_sensitive_label(sidecar_df.iloc[int(i)][sidecar_col])
+                )
+        except Exception:
+            pass
 
     classifier = SensitivityClassifier()
     feature_sensitivity_classifier = FeatureSensitivityClassifier()
@@ -456,6 +611,7 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
         "ciphertext_sensitive": 0,
     }
     rows: list[dict[str, Any]] = []
+    encrypted_payload_rows: list[dict[str, Any]] = []
 
     for idx, row in sampled_df.iterrows():
         record = to_internal_record(row)
@@ -486,28 +642,33 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 detection_path = "mixed_privacy_inference"
             else:
                 detection_path = "plaintext_inference"
+            encrypted_payload = {}
         elif effective_mode == "ckks":
-            prob, _, encrypted_feature_list = server.predict_proba_ckks(
+            prob, _, encrypted_feature_list, encrypted_payload = server.predict_proba_ckks(
                 record=record,
                 sensitive_fields=sensitive_fields,
+                capture_encrypted_payload=True,
             )
             detection_path = "ckks_privacy_inference"
         elif effective_mode == "mixed":
             # In mixed mode, tie encryption behavior to sensitivity judgement:
             # HIGH (encryption_required=True) -> CKKS; otherwise -> plaintext.
             if bool(sensitivity["encryption_required"]):
-                prob, _, encrypted_feature_list = server.predict_proba_ckks(
+                prob, _, encrypted_feature_list, encrypted_payload = server.predict_proba_ckks(
                     record=record,
                     sensitive_fields=sensitive_fields,
+                    capture_encrypted_payload=True,
                 )
                 detection_path = "mixed_privacy_inference"
             else:
                 prob = float(server.predict_proba_plain(record))
                 encrypted_feature_list = []
+                encrypted_payload = {}
                 detection_path = "plaintext_inference"
         else:
             prob = float(server.predict_proba_plain(record))
             encrypted_feature_list = []
+            encrypted_payload = {}
             detection_path = "plaintext_inference"
 
         is_sensitive_traffic = bool(sensitivity["is_sensitive"])
@@ -559,6 +720,28 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             }
         )
 
+        if encrypted_payload:
+            payload_files: dict[str, Any] = {}
+            for field_name, ciphertext_obj in encrypted_payload.items():
+                bin_name = f"sample_{int(idx):06d}__{_safe_name(field_name)}.bin"
+                bin_path = output_dir / f"appad_pre_inference_ciphertexts_{effective_mode}" / bin_name
+                bytes_len = persist_raw_ciphertext(ciphertext_obj, bin_path)
+                payload_files[field_name] = {
+                    "encoding": "raw_ckks_serialized_bytes",
+                    "file": str(bin_path),
+                    "bytes": bytes_len,
+                }
+
+            encrypted_payload_rows.append(
+                {
+                    "sample_idx": int(idx),
+                    "detection_path": detection_path,
+                    "sensitivity_level": sensitivity["sensitivity_level"],
+                    "encrypted_fields": sorted(list(encrypted_payload.keys())),
+                    "payload": payload_files,
+                }
+            )
+
     y_true_arr = np.asarray(y_true, dtype=np.int64)
     y_pred_arr = np.asarray(y_pred, dtype=np.int64)
     latency_arr = np.asarray(latencies_sec, dtype=np.float64)
@@ -593,6 +776,8 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "threshold": DEFAULT_THRESHOLD,
             "inference_mode_requested": args.inference_mode,
             "inference_mode_used": effective_mode,
+            "feature_scale_check_passed": bool(feature_scale_ok),
+            "allow_unscaled_dataset": bool(args.allow_unscaled_dataset),
         },
         "metrics": {
             "accuracy": round(accuracy, 4),
@@ -628,8 +813,29 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     pred_path = output_dir / f"appad_main_predictions_{effective_mode}.csv"
     metrics_path = output_dir / f"appad_main_metrics_{effective_mode}.json"
+    encrypted_payload_path = output_dir / f"appad_pre_inference_encrypted_payloads_{effective_mode}.jsonl"
+    encrypted_bin_dir = output_dir / f"appad_pre_inference_ciphertexts_{effective_mode}"
+    sampled_plain_path = output_dir / f"appad_sampled_plain_{effective_mode}.csv"
 
     pd.DataFrame(rows).to_csv(pred_path, index=False)
+    sampled_plain_df.to_csv(sampled_plain_path, index=False)
+
+    if encrypted_payload_rows:
+        with encrypted_payload_path.open("w", encoding="utf-8") as f:
+            for row in encrypted_payload_rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    else:
+        if encrypted_payload_path.exists():
+            encrypted_payload_path.unlink()
+        if encrypted_bin_dir.exists():
+            for item in encrypted_bin_dir.glob("*.bin"):
+                item.unlink()
+
+    results["config"]["pre_inference_encrypted_payload_path"] = str(encrypted_payload_path) if encrypted_payload_rows else ""
+    results["config"]["pre_inference_encrypted_payload_count"] = int(len(encrypted_payload_rows))
+    results["config"]["pre_inference_encrypted_ciphertext_dir"] = str(encrypted_bin_dir) if encrypted_payload_rows else ""
+    results["config"]["sampled_plain_data_path"] = str(sampled_plain_path)
+
     with metrics_path.open("w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 

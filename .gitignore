@@ -35,3 +35,14 @@ output_results/
 logistic_regression_model/output_lr/
 traffic_generation/output/
 data_preprocessing/output/
+
+# APPAD runtime artifacts (explicit)
+output_results/appad_pre_inference_ciphertexts_*/
+output_results/appad_pre_inference_encrypted_payloads_*.jsonl
+output_results/appad_sampled_plain_*.csv
+output_results/appad_main_predictions_*.csv
+output_results/appad_main_metrics_*.json
+output_results/privacy_ratio_plots/
+
+# Local runtime logs/temp
+*.log

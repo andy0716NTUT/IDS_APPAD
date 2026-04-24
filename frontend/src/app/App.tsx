@@ -343,6 +343,53 @@ export default function App() {
     }
   };
 
+  /* ---- Hex viewer (from hex viewer branch) ---- */
+  useEffect(() => {
+    if (!artifacts.encryptedCiphertextFiles.length) {
+      setSelectedCipherPath('');
+      setHexView(null);
+      return;
+    }
+    const exists = artifacts.encryptedCiphertextFiles.some((f) => f.path === selectedCipherPath);
+    if (!exists) {
+      setSelectedCipherPath(artifacts.encryptedCiphertextFiles[0].path);
+    }
+  }, [artifacts.encryptedCiphertextFiles, selectedCipherPath]);
+
+  const loadHexPage = async (offset = 0) => {
+    if (!selectedCipherPath) {
+      setHexView(null);
+      return;
+    }
+    setHexLoading(true);
+    try {
+      const params = new URLSearchParams({
+        path: selectedCipherPath,
+        offset: String(Math.max(0, offset)),
+        length: String(Math.max(64, Math.min(4096, hexPageBytes))),
+      });
+      const res = await fetch(`/api/ciphertext/hex?${params.toString()}`);
+      const payload = (await res.json()) as HexViewPayload & { error?: string };
+      if (!res.ok) {
+        throw new Error(payload.error ?? '載入密文 Hex 失敗');
+      }
+      setHexView(payload);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '未知錯誤';
+      appendLog(`[Hex Viewer] ${message}`);
+      setHexView(null);
+    } finally {
+      setHexLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedCipherPath) {
+      return;
+    }
+    void loadHexPage(0);
+  }, [selectedCipherPath, hexPageBytes]);
+
   /* ---- Derived data for comparison charts ---- */
   const comparisonBarData = Object.keys(compareResults).length > 0 ? ['plaintext', 'mixed', 'ckks']
     .filter(m => compareResults[m])
@@ -1013,6 +1060,134 @@ export default function App() {
                   ))}
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="artifacts">
+            <div className="bg-white border border-gray-200 rounded p-4 mt-1">
+              <h2 className="text-base font-medium text-gray-900 mb-3">當次抽樣資料與密文檔</h2>
+              <div className="text-sm text-gray-700 space-y-1 mb-4">
+                <div>抽樣明文資料: {artifacts.sampledPlainDataPath || '尚未產生'}</div>
+                <div>密文索引檔: {artifacts.encryptedPayloadIndexPath || '尚未產生'}</div>
+                <div>密文資料夾: {artifacts.encryptedCiphertextDir || '尚未產生'}</div>
+                <div>密文檔總數: {artifacts.encryptedCiphertextFileCount}</div>
+                <div className="text-gray-500">註: 此密文檔數量為「本次主流程推論」產物，非 10%-90% 掃描各比例總和。</div>
+                <div>資料來源: {artifacts.datasetPath || '未知'}</div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="font-medium text-gray-800 mb-2">抽樣明文預覽（含預先敏感標記）</h3>
+                  <div className="max-h-64 overflow-auto border border-gray-200 rounded">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-2 py-1">idx</th>
+                          <th className="text-left px-2 py-1">預先標記</th>
+                          <th className="text-left px-2 py-1">anomaly</th>
+                          <th className="text-left px-2 py-1">user_id</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sampledRecordsPreview.map((r) => (
+                          <tr key={r.sample_idx} className="border-t border-gray-100">
+                            <td className="px-2 py-1">{r.sample_idx}</td>
+                            <td className={`px-2 py-1 ${r.pre_sensitive_label === '敏感' ? 'text-red-700 font-medium' : 'text-green-700'}`}>
+                              {r.pre_sensitive_label}
+                            </td>
+                            <td className="px-2 py-1">{r.anomaly}</td>
+                            <td className="px-2 py-1">{r.user_id ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium text-gray-800 mb-2">密文檔清單（前200筆）</h3>
+                  <div className="max-h-64 overflow-auto border border-gray-200 rounded p-2 text-xs font-mono text-gray-700 space-y-1">
+                    {artifacts.encryptedCiphertextFiles.map((f) => (
+                      <div key={f.path}>{f.name} ({f.bytes} bytes)</div>
+                    ))}
+                    {artifacts.encryptedCiphertextFiles.length === 0 && <div>尚無密文檔資料</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="ciphertext">
+            <div className="bg-white border border-gray-200 rounded p-4 space-y-4">
+              <h2 className="text-base font-medium text-gray-900">密文 16 進位分頁檢視</h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-700">密文檔案</label>
+                  <select
+                    value={selectedCipherPath}
+                    onChange={(e) => setSelectedCipherPath(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                  >
+                    {artifacts.encryptedCiphertextFiles.length === 0 && <option value="">尚無密文檔</option>}
+                    {artifacts.encryptedCiphertextFiles.map((f) => (
+                      <option key={f.path} value={f.path}>
+                        {f.name} ({f.bytes} bytes)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-700">每頁位元組數</label>
+                  <input
+                    type="number"
+                    min={64}
+                    max={4096}
+                    step={64}
+                    value={hexPageBytes}
+                    onChange={(e) => setHexPageBytes(Math.max(64, Math.min(4096, Number(e.target.value || 512))))}
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:bg-gray-100"
+                  disabled={!hexView?.hasPrev || hexLoading}
+                  onClick={() => void loadHexPage(hexView?.prevOffset ?? 0)}
+                >
+                  上一頁
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:bg-gray-100"
+                  disabled={!hexView?.hasNext || hexLoading}
+                  onClick={() => void loadHexPage(hexView?.nextOffset ?? 0)}
+                >
+                  下一頁
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 rounded border border-gray-300 text-sm disabled:bg-gray-100"
+                  disabled={!selectedCipherPath || hexLoading}
+                  onClick={() => void loadHexPage(hexView?.offset ?? 0)}
+                >
+                  重新載入
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-600">
+                {hexView
+                  ? `檔案: ${hexView.path} | offset=${hexView.offset} | 顯示=${hexView.length} bytes | 總大小=${hexView.totalBytes} bytes`
+                  : '尚未選擇密文檔案'}
+              </div>
+
+              <pre className="bg-gray-900 text-gray-100 rounded p-3 overflow-auto max-h-[480px] text-xs leading-5">
+                {hexLoading ? '載入中...' : hexView?.hexDump || '無資料'}
+              </pre>
             </div>
           </TabsContent>
         </Tabs>
