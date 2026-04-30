@@ -642,7 +642,9 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
                 detection_path = "mixed_privacy_inference"
             else:
                 detection_path = "plaintext_inference"
-            encrypted_payload = {}
+            # Expose the local CKKS ciphertexts so .bin files get written
+            # for the Hex Viewer feature even in remote mode.
+            encrypted_payload = dict(payload.get("encrypted", {}))
         elif effective_mode == "ckks":
             prob, _, encrypted_feature_list, encrypted_payload = server.predict_proba_ckks(
                 record=record,

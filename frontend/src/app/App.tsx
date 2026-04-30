@@ -95,6 +95,43 @@ interface DemoResult {
   };
 }
 
+interface SampleRecord {
+  sample_idx: number;
+  pre_sensitive_label: string;
+  anomaly: number;
+  user_id?: string;
+  login_status?: string;
+  location?: string;
+}
+
+interface CiphertextFileInfo {
+  name: string;
+  path: string;
+  bytes: number;
+}
+
+interface ArtifactsData {
+  datasetPath: string;
+  sampledPlainDataPath: string;
+  encryptedPayloadIndexPath: string;
+  encryptedCiphertextDir: string;
+  encryptedCiphertextFiles: CiphertextFileInfo[];
+  encryptedCiphertextFileCount: number;
+}
+
+interface HexViewPayload {
+  path: string;
+  totalBytes: number;
+  offset: number;
+  length: number;
+  requestedLength: number;
+  nextOffset: number;
+  prevOffset: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+  hexDump: string;
+}
+
 /* ------------------------------------------------------------------ */
 /* Defaults                                                            */
 /* ------------------------------------------------------------------ */
@@ -109,6 +146,15 @@ const defaultChartSeries: ChartSeries = {
 };
 
 const defaultTraffic: TrafficBreakdown = { plaintextBytes: 0, ciphertextBytes: 0 };
+
+const defaultArtifacts: ArtifactsData = {
+  datasetPath: '',
+  sampledPlainDataPath: '',
+  encryptedPayloadIndexPath: '',
+  encryptedCiphertextDir: '',
+  encryptedCiphertextFiles: [],
+  encryptedCiphertextFileCount: 0,
+};
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -133,6 +179,18 @@ function toTraffic(p: ApiPayload): TrafficBreakdown {
   return {
     plaintextBytes: Number(t?.plaintext_nonsensitive ?? 0),
     ciphertextBytes: Number(t?.ciphertext_sensitive ?? 0),
+  };
+}
+
+function toArtifacts(p: any): ArtifactsData {
+  const a = p?.artifacts ?? {};
+  return {
+    datasetPath: a.datasetPath ?? '',
+    sampledPlainDataPath: a.sampledPlainDataPath ?? '',
+    encryptedPayloadIndexPath: a.encryptedPayloadIndexPath ?? '',
+    encryptedCiphertextDir: a.encryptedCiphertextDir ?? '',
+    encryptedCiphertextFiles: a.encryptedCiphertextFiles ?? [],
+    encryptedCiphertextFileCount: Number(a.encryptedCiphertextFileCount ?? 0),
   };
 }
 
@@ -194,7 +252,14 @@ export default function App() {
   /* -- Run controls -- */
   const [selectedMode, setSelectedMode] = useState<string>('mixed');
   const [seed, setSeed] = useState<number>(42);
+  const [sampleSize, setSampleSize] = useState<number>(500);
+  const [randomSeedEachRun, setRandomSeedEachRun] = useState<boolean>(false);
   const [runSweep, setRunSweep] = useState(true);
+
+  /* -- Progress tracking -- */
+  const [runStartTime, setRunStartTime] = useState<number | null>(null);
+  const [runElapsed, setRunElapsed] = useState<number>(0);
+  const [runEstimate, setRunEstimate] = useState<number>(0);
 
   /* -- Mode comparison -- */
   const [compareResults, setCompareResults] = useState<Record<string, MetricData>>({});
@@ -212,6 +277,14 @@ export default function App() {
   const [demoMode, setDemoMode] = useState<string>('mixed');
   const [activeStep, setActiveStep] = useState<number>(0);
   const [animating, setAnimating] = useState(false);
+
+  /* -- Artifacts & Hex viewer (from hex viewer branch) -- */
+  const [artifacts, setArtifacts] = useState<ArtifactsData>(defaultArtifacts);
+  const [sampledRecordsPreview, setSampledRecordsPreview] = useState<SampleRecord[]>([]);
+  const [selectedCipherPath, setSelectedCipherPath] = useState<string>('');
+  const [hexView, setHexView] = useState<HexViewPayload | null>(null);
+  const [hexPageBytes, setHexPageBytes] = useState<number>(512);
+  const [hexLoading, setHexLoading] = useState<boolean>(false);
 
   const appendLog = (line: string) => setLogs(prev => [...prev.slice(-14), line]);
   const ts = () => new Date().toLocaleString('zh-TW', {
@@ -238,25 +311,56 @@ export default function App() {
     try {
       const res = await fetch('/api/results?mode=mixed');
       if (!res.ok) return;
-      const payload: ApiPayload = await res.json();
+      const payload: any = await res.json();
       setMetrics(toMetricData(payload));
       setChartSeries(toChartSeries(payload));
       setTraffic(toTraffic(payload));
+      setArtifacts(toArtifacts(payload));
+      setSampledRecordsPreview(payload.sampledRecordsPreview ?? []);
       setLastUpdated(new Date().toLocaleString('zh-TW'));
     } catch { /* ignore */ }
   };
   useEffect(() => { void loadServerInfo(); void loadLatestResults(); }, []);
 
+  /* ---- Progress ticker ---- */
+  useEffect(() => {
+    if (runStartTime === null) {
+      return;
+    }
+    const id = setInterval(() => {
+      setRunElapsed((Date.now() - runStartTime) / 1000);
+    }, 100);
+    return () => clearInterval(id);
+  }, [runStartTime]);
+
   /* ---- Single-mode run ---- */
   const handleRun = async () => {
     setIsRunning(true);
-    appendLog(`[${ts()}] 開始執行 ${MODE_LABELS[selectedMode]} 分析...`);
+    let effectiveSeed = seed;
+    if (randomSeedEachRun) {
+      effectiveSeed = Math.floor(Math.random() * 1_000_000);
+      setSeed(effectiveSeed);
+      appendLog(`[${ts()}] 自動產生新隨機種子: ${effectiveSeed}`);
+    }
+
+    // Estimate total runtime (rough heuristic — adjust if needed)
+    // Local plaintext: ~0.0001s per sample; CKKS/Mixed: ~0.02s; Remote: +network
+    const perSampleSec = serverMode === 'remote'
+      ? (selectedMode === 'plaintext' ? 0.06 : 0.18)
+      : (selectedMode === 'plaintext' ? 0.001 : 0.02);
+    const sweepMultiplier = runSweep ? 10 : 1; // main + 9 ratios
+    const estimate = sampleSize * perSampleSec * sweepMultiplier + 2;
+    setRunEstimate(estimate);
+    setRunStartTime(Date.now());
+    setRunElapsed(0);
+
+    appendLog(`[${ts()}] 開始執行 ${MODE_LABELS[selectedMode]} 分析（預估 ${estimate.toFixed(0)} 秒）...`);
 
     try {
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inferenceMode: selectedMode, seed, runPrivacySweep: runSweep }),
+        body: JSON.stringify({ inferenceMode: selectedMode, seed: effectiveSeed, sampleSize, runPrivacySweep: runSweep }),
       });
       const payload: ApiPayload = await res.json();
       if (!res.ok) throw new Error(payload.error ?? '後端執行失敗');
@@ -267,6 +371,8 @@ export default function App() {
       setMetrics(newMetrics);
       setChartSeries(newChartSeries);
       setTraffic(newTraffic);
+      setArtifacts(toArtifacts(payload));
+      setSampledRecordsPreview((payload as any).sampledRecordsPreview ?? []);
       setLastUpdated(new Date().toLocaleString('zh-TW'));
 
       setExecutionHistory(prev => [{
@@ -283,6 +389,7 @@ export default function App() {
       appendLog(`[${ts()}] 執行失敗: ${err instanceof Error ? err.message : '未知錯誤'}`);
     } finally {
       setIsRunning(false);
+      setRunStartTime(null);
     }
   };
 
@@ -464,6 +571,8 @@ export default function App() {
             <TabsTrigger value="history">
               <History className="w-4 h-4 mr-1" /> 執行紀錄
             </TabsTrigger>
+            <TabsTrigger value="artifacts">抽樣與密文資料</TabsTrigger>
+            <TabsTrigger value="ciphertext">密文 Hex Viewer</TabsTrigger>
           </TabsList>
 
           {/* ================================================================ */}
@@ -489,15 +598,40 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">隨機種子</label>
+                  <label className="block text-xs text-gray-600 mb-1">樣本數</label>
                   <input
-                    type="number" value={seed} onChange={e => setSeed(Number(e.target.value))}
-                    className="border border-gray-300 rounded px-3 py-2 text-sm w-24"
+                    type="number" min={1} max={10000} step={50}
+                    value={sampleSize}
+                    onChange={e => setSampleSize(Math.max(1, Number(e.target.value)))}
+                    className="border border-gray-300 rounded px-3 py-2 text-sm w-28"
                   />
                 </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="sweep" checked={runSweep} onChange={e => setRunSweep(e.target.checked)} />
-                  <label htmlFor="sweep" className="text-sm text-gray-700">隱私比例掃描</label>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">隨機種子</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number" value={seed} onChange={e => setSeed(Number(e.target.value))}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm w-24"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSeed(Math.floor(Math.random() * 1_000_000))}
+                      className="px-2 py-2 border border-gray-300 rounded text-sm hover:bg-gray-100"
+                      title="重新隨機產生種子"
+                    >
+                      🎲
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="randomSeed" checked={randomSeedEachRun} onChange={e => setRandomSeedEachRun(e.target.checked)} />
+                    <label htmlFor="randomSeed" className="text-sm text-gray-700">每次隨機種子</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="sweep" checked={runSweep} onChange={e => setRunSweep(e.target.checked)} />
+                    <label htmlFor="sweep" className="text-sm text-gray-700">隱私比例掃描</label>
+                  </div>
                 </div>
                 <button
                   onClick={handleRun}
@@ -508,6 +642,28 @@ export default function App() {
                   {isRunning ? '執行中...' : '執行分析'}
                 </button>
               </div>
+
+              {/* Progress bar (visible during run) */}
+              {isRunning && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-600">
+                      {runElapsed.toFixed(1)} 秒 / 預估 {runEstimate.toFixed(0)} 秒
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {Math.min(99, Math.floor((runElapsed / runEstimate) * 100))}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full transition-all duration-300 relative overflow-hidden"
+                      style={{ width: `${Math.min(99, (runElapsed / runEstimate) * 100)}%` }}
+                    >
+                      <div className="absolute inset-0 bg-white opacity-30 animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* -- Metric Cards (2x2) -- */}
