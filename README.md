@@ -83,6 +83,20 @@ APPAD（Adaptive Privacy-Preserving Anomaly Detection）實作專案：在異常
 - 範例：
   - `from traffic_generation import run_traffic_benchmark`
 
+## 本地 Demo 一鍵啟動（Windows）
+
+雙擊 `start_demo.bat`（或在 PowerShell 執行 `.\start_demo.ps1`）即可完成部署並啟動 Demo：
+
+1. 自動尋找 Python 3.10~3.12（TenSEAL 不支援 3.13+），建立 `.venv311-tenseal` 虛擬環境
+2. 安裝 `requirements.txt`（已裝齊則略過）
+3. 前端 `npm install`（`node_modules` 已存在則略過）
+4. 啟動後端 API（`frontend/backend_api.py`，port 8000，最小化視窗）
+5. 啟動前端網站（Vite，自動開啟瀏覽器 http://localhost:5173）
+
+按 `Ctrl+C` 或關閉視窗即停止前後端服務。
+
+前置需求：已安裝 Node.js（含 npm）與 Python 3.10~3.12，其餘全自動。
+
 ## `main.py` 執行方式
 
 `main.py` 為專案整合入口，**預設會啟動前端網站流程**：
