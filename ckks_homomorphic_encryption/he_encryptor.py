@@ -55,7 +55,7 @@ class CKKSEncryptor:
 
     def __init__(
         self,
-        poly_modulus_degree: int = 8192,
+        poly_modulus_degree: int = 16384,
         coeff_mod_bit_sizes: list[int] | None = None,
         global_scale_bits: int = 40,
     ) -> None:
@@ -67,7 +67,10 @@ class CKKSEncryptor:
                 "請先執行: pip install tenseal"
             ) from e
 
-        bit_sizes = coeff_mod_bit_sizes or [60, 40, 40, 60]
+        # 模數鏈需保留足夠乘法深度，密文域 3 階多項式 sigmoid 才能完整運算
+        # （z^2、z^3 與兩次常數乘各消耗一層）。深度不足會在 rescale 時拋出
+        # "scale out of bounds"，導致 sigmoid 退回明文計算。
+        bit_sizes = coeff_mod_bit_sizes or [60, 40, 40, 40, 40, 60]
         self._ts = ts
         self.context = ts.context(
             ts.SCHEME_TYPE.CKKS,
