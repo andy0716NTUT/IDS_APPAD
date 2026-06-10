@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any
 
 from ckks_homomorphic_encryption import CKKSEncryptor
@@ -90,7 +91,15 @@ class LogisticRegressionCKKS:
         try:
             prob_enc = self._sigmoid_poly_encrypted(z_enc)
             prob = float(self.encryptor.decrypt(prob_enc))
-        except Exception:
+        except Exception as exc:
+            # 此 fallback 會讓激活函數在明文域計算，使 CKKS 結果與明文完全一致。
+            # 過去因模數鏈深度不足而「靜默」觸發，這裡改為發出警告以便察覺。
+            warnings.warn(
+                "CKKS 密文 sigmoid 失敗，已退回明文 sigmoid（激活函數未在密文域計算）："
+                f"{type(exc).__name__}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             z_value = float(self.encryptor.decrypt(z_enc))
             prob = self._sigmoid_plain(z_value)
 

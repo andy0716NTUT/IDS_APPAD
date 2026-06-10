@@ -389,7 +389,9 @@ def run_privacy_ratio_sweep(
                 prob = decision.prob
                 encrypted_feature_list = sorted(payload.get("encrypted", {}).keys())
             elif inference_mode == "ckks":
-                prob, _, encrypted_feature_list = server.predict_proba_ckks(record=record, sensitive_fields=sensitive_fields)
+                # 全密文模式：加密所有特徵欄位（與主迴圈一致），符合「CKKS = 全部特徵加密」語意。
+                all_fields = {k for k in record.keys() if k != "anomaly"}
+                prob, _, encrypted_feature_list = server.predict_proba_ckks(record=record, sensitive_fields=all_fields)
             elif inference_mode == "mixed":
                 if is_sensitive_traffic:
                     prob, _, encrypted_feature_list = server.predict_proba_ckks(record=record, sensitive_fields=sensitive_fields)
@@ -646,9 +648,12 @@ def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             # for the Hex Viewer feature even in remote mode.
             encrypted_payload = dict(payload.get("encrypted", {}))
         elif effective_mode == "ckks":
+            # 全密文模式：加密記錄中所有特徵欄位（非僅敏感欄位），符合簡報「CKKS = 全部特徵加密」語意。
+            # 數值權重特徵以正確 float 值加密（不影響分數）；非權重字串欄位僅多付加密成本、權重為 0 不影響 z。
+            all_fields = {k for k in record.keys() if k != "anomaly"}
             prob, _, encrypted_feature_list, encrypted_payload = server.predict_proba_ckks(
                 record=record,
-                sensitive_fields=sensitive_fields,
+                sensitive_fields=all_fields,
                 capture_encrypted_payload=True,
             )
             detection_path = "ckks_privacy_inference"
